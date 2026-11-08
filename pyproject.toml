@@ -1,0 +1,10 @@
+[project]
+name = "skeptic"
+version = "0.1.0"
+description = "A falsification-first agent for drilling data"
+requires-python = ">=3.11"
+dependencies = ["numpy", "pandas", "pyarrow", "openpyxl", "pymupdf", "openai", "streamlit", "matplotlib"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["lsu: needs the private LSU H-001 files", "live: calls the LLM API (needs OPENROUTER_API_KEY)"]

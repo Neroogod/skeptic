@@ -1,0 +1,12 @@
+# data-derived or private: never commit (LSU H-001 is LSU-only)
+.env
+cache/
+runs/
+bench/private/
+*.pkl
+*.parquet
+__pycache__/
+.venv/
+.pytest_cache/
+skeptic/private/
+tests/private/
