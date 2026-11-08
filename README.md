@@ -18,7 +18,7 @@ CSC 7700 individual project (LSU, Fall 2026). The physics (soft-string torque an
 | `skeptic/bench/` | Fault injector, benchmark builder with oracle validation, deterministic scorer, fixed-pipeline baseline, runner |
 | `app.py` | Streamlit demo, with live runs, a sabotage menu and trace replay |
 | `scripts/export_tnd.py` | One-off export of torque-and-drag inputs from the PETE pipeline |
-| `tests/` | 53 tests (evidence, physics, harness, benchmark, UI) |
+| `tests/` | 54 tests (evidence, physics, harness, benchmark, UI) |
 
 ## Setup
 
@@ -71,6 +71,12 @@ disagree, logging trips with physically impossible fits).
 **Oracle validation:** every injected fault is detectable by its reference check, and every control passes that check on clean data.
 
 **Metrics:** accuracy by slice, detection rate, false-alarm rate, confident-wrong rate (wrong with confidence ≥ 0.7), abstention rate, risk–coverage AUC, cost and tool calls.
+
+## Results
+
+See [RESULTS.md](RESULTS.md). On the held-out test set the three systems tie on accuracy (0.76-0.78).
+Skeptic is confidently wrong about half as often as ReAct (6.9% vs 12.7%, p = 0.017) and has a much lower
+risk-coverage curve, at the price of more abstentions and 1.8x the cost.
 
 ## Data and confidentiality
 

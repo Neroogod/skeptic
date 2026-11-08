@@ -109,6 +109,9 @@ def clock_offset_activity(edr, activity, t0, t1, max_lag_min=240):
         if is_drill:
             rep[(rep.index >= pd.Timestamp(s)) & (rep.index < pd.Timestamp(e))] = 1.0
     (lag, c), scores = best_lag(rep, a, max_lag_min)
+    if not scores:                                    # no drilling in the report or the rig record: nothing to align
+        return dict(check="clock_offset", compared="report activity log vs EDR on-bottom drilling", window=[str(t0), str(t1)],
+                    verdict="insufficient data", note="no drilling intervals to compare in this window (report or rig)")
     zero = scores.get(0)
     near = [k for k, s in scores.items() if s >= c - 0.02]          # lags almost as good as the best one
     return dict(check="clock_offset", compared="report activity log vs EDR on-bottom drilling", window=[str(t0), str(t1)],
@@ -125,6 +128,9 @@ def clock_offset_series(a_df, b_df, channel, t0, t1, max_lag_min=240):
     a = _window(a_df, t0, t1).set_index("t")[channel].resample("1min").mean()
     b = _window(b_df, t0, t1).set_index("t")[channel].resample("1min").mean()
     (lag, c), scores = best_lag(a.interpolate(limit=5), b.interpolate(limit=5), max_lag_min)
+    if not scores:
+        return dict(check="clock_offset", compared=f"{channel}: feed A vs feed B", window=[str(t0), str(t1)],
+                    verdict="insufficient data", note="the feeds do not overlap or do not vary in this window")
     zero = scores.get(0)
     return dict(check="clock_offset", compared=f"{channel}: feed A vs feed B", window=[str(t0), str(t1)],
                 best_lag_min=lag, corr_at_best=round(c, 3), corr_at_zero=None if zero is None else round(zero, 3),

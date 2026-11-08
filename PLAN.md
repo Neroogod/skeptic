@@ -98,7 +98,7 @@ Each phase ends with a gate. The next phase does not start until the gate passes
 | 3 Benchmark | done: development set 61 tasks; held-out test set 63 tasks (below) |
 | 4 Harness | done: scripted-LLM tests for every gate |
 | 5 Scorer + baselines | done |
-| 6 Live LLM runs | v1 and v2 on the development set done (Haiku 5.5); v3 test run pending |
+| 6 Live LLM runs | v1, v2 (development set) and v3 (held-out test set, 3 seeds) done; see RESULTS.md |
 | 7 UI | done (Streamlit, sabotage menu, replay); renders headlessly in tests |
 | 8 Self-review | done twice (2026-11-07, 2026-11-08), see below |
 
@@ -148,3 +148,11 @@ chosen *because* they had failed, so it verifies the fixes and is not a result.
   3. No prediction on overall accuracy; it is reported either way.
   4. Skeptic costs about twice as much per task as ReAct.
 - Every result is reported, including any that go against these predictions.
+
+### v3 outcome (2026-11-08)
+
+Run at commit `2a2e1e6`, $5.36. Accuracy: Skeptic 0.757, ReAct 0.778, fixed 0.762 (Skeptic - ReAct -0.021,
+95% CI -0.10 to +0.05, p = 0.70). Prediction 1 held (false alarms 8.8% vs 14.0%, n.s.), prediction 2 failed
+(identify 0.86 vs 1.00), prediction 4 held (1.8x cost). Secondary: confident-wrong 6.9% vs 12.7% (p = 0.017),
+risk-coverage AUC 0.060 vs 0.168. Found after the run: 2 clock controls rest on a sentinel output of the clock
+check (fixed afterwards; without them all three systems score 0.770). Full tables in RESULTS.md.

@@ -186,3 +186,11 @@ def test_identifiability_needs_consistent_physical_trips():
     assert bad["verdict"] == "not identifiable" and any("physical range" in r for r in bad["reasons"])
     weak = tnd.identifiability(ds, "mu_open", tnd.select(ds, "2020-11-24", "2020-11-27"), t0="2020-11-24", t1="2020-11-27")
     assert weak["verdict"] == "not identifiable" and "sensitivity" in weak["reasons"][0]
+
+
+def test_clock_offset_without_drilling_is_insufficient_not_aligned():
+    """No drilling in the window: the check must say it cannot tell (it used to return corr -2.0 and 'aligned')."""
+    t = pd.date_range("2020-01-01", periods=600, freq="1min")
+    edr = pd.DataFrame(dict(t=t, on_bottom=0.0, flow_gpm=0.0))
+    r = qc.clock_offset_activity(edr, [(t[100], t[200], False)], t[0], t[-1])
+    assert r["verdict"] == "insufficient data" and "best_lag_min" not in r

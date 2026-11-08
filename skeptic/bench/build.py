@@ -166,7 +166,10 @@ def forge_tasks(P=None):
         base = Task("x", "forge", "control", "clock", q, scope, {})
         if oracle(base, ws):
             continue                                      # natural misalignment: unusable either way
-        base_lag = T.call(ws, "check_clock_offset", dict(start=fmt(s), end=fmt(e), max_lag_min=180))[0].get("best_lag_min", 0)
+        clean = T.call(ws, "check_clock_offset", dict(start=fmt(s), end=fmt(e), max_lag_min=180))[0]
+        if clean.get("verdict") == "insufficient data":
+            continue                                      # nothing to align on this day: neither a fault nor a control
+        base_lag = clean.get("best_lag_min", 0)
         if P.get("clock_max_base_lag") is not None and abs(base_lag) > P["clock_max_base_lag"]:
             continue                                      # no usable alignment on the clean day
         if k < len(offsets):
