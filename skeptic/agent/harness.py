@@ -81,6 +81,8 @@ class Context:
             problems.append(f"evidence ids {bad} are not tool calls from this session")
         if not ans.get("evidence") and ans.get("verdict") != "abstain":
             problems.append("cite at least one tool-call id in evidence")
+        if ans.get("verdict") == "fault_found" and ans.get("fault_type") in (None, "", "none"):
+            problems.append("verdict fault_found needs a fault_type (see the field description)")
         if cfg.verifier:
             nums = unverified_numbers(ans, self.tool_texts(), self.question)
             if nums:
@@ -99,7 +101,9 @@ class Context:
             self.skeptic_reviews.append(review)
             if review.get("decision") == "reject":
                 problems.append("skeptic review rejected the answer: " + "; ".join(review.get("objections", []))[:800]
-                                + (f" | suggested check: {review.get('suggested_check')}" if review.get("suggested_check") else ""))
+                                + (f" | suggested check: {review.get('suggested_check')}" if review.get("suggested_check") else "")
+                                + " | Address each objection (run the check, or explain why it does not change the conclusion); "
+                                  "change the verdict only if the evidence changes.")
         if problems:
             self.rejections.append(" | ".join(problems))
         return problems

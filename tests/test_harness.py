@@ -142,3 +142,10 @@ def test_tool_not_in_config_is_refused(ws):
     llm = ScriptedLLM([call("hookload_model", model="single_mu"), submit(verdict="abstain", value=None, evidence="c1", explanation="x")])
     tr = harness.run(ws, Q, llm, harness.CONFIGS["rag"])
     assert "not available" in tr["calls"][0]["text"]
+
+
+def test_fault_found_requires_fault_type(ws):
+    llm = ScriptedLLM([call("get_facts", quantity="casing_shoe_depth", qualifier="9.63"),
+                       submit(verdict="fault_found", fault_type=None), submit(verdict="fault_found", fault_type="wrong_value")])
+    tr = harness.run(ws, Q, llm, bare())
+    assert "needs a fault_type" in tr["rejections"][0] and tr["answer"]["fault_type"] == "wrong_value"

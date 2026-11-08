@@ -130,7 +130,8 @@ def forge_tasks():
     k = c = 0
     for day in FORGE_DAYS[3:]:
         s, e = day_window(day)
-        q = f"Check the hole-depth record of the rig data between {fmt(s)} and {fmt(e)} for consistency."
+        q = (f"Check the hole-depth record of the rig data between {fmt(s)} and {fmt(e)} for consistency. "
+             f"If it contains an error, how large is it in feet?")
         scope = dict(start=fmt(s), end=fmt(e))
         if oracle(Task("x", "forge", "control", "depth", q, scope, {}), ws):
             continue
@@ -199,7 +200,8 @@ def forge_tasks():
     k = c = 0
     for _, r in sv.sample(frac=1, random_state=SEED).iterrows():
         md = float(r.depth)
-        q = f"Are the survey stations reported between {md - 300:.0f} and {md + 300:.0f} ft MD consistent across documents?"
+        q = (f"Are the survey stations reported between {md - 300:.0f} and {md + 300:.0f} ft MD consistent across documents? "
+             f"If a station is wrong, what is its correct inclination?")
         scope = dict(depth_min=md - 300, depth_max=md + 300)
         if oracle(Task("x", "forge", "control", "survey", q, scope, {}), ws):
             continue

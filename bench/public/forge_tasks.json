@@ -359,7 +359,7 @@
   "well": "forge",
   "slice": "injected",
   "family": "depth",
-  "question": "Check the hole-depth record of the rig data between 2020-11-16 06:00 and 2020-11-17 06:00 for consistency.",
+  "question": "Check the hole-depth record of the rig data between 2020-11-16 06:00 and 2020-11-17 06:00 for consistency. If it contains an error, how large is it in feet?",
   "scope": {
    "start": "2020-11-16 06:00",
    "end": "2020-11-17 06:00"
@@ -387,7 +387,7 @@
   "well": "forge",
   "slice": "injected",
   "family": "depth",
-  "question": "Check the hole-depth record of the rig data between 2020-11-24 06:00 and 2020-11-25 06:00 for consistency.",
+  "question": "Check the hole-depth record of the rig data between 2020-11-24 06:00 and 2020-11-25 06:00 for consistency. If it contains an error, how large is it in feet?",
   "scope": {
    "start": "2020-11-24 06:00",
    "end": "2020-11-25 06:00"
@@ -415,7 +415,7 @@
   "well": "forge",
   "slice": "injected",
   "family": "depth",
-  "question": "Check the hole-depth record of the rig data between 2020-11-26 06:00 and 2020-11-27 06:00 for consistency.",
+  "question": "Check the hole-depth record of the rig data between 2020-11-26 06:00 and 2020-11-27 06:00 for consistency. If it contains an error, how large is it in feet?",
   "scope": {
    "start": "2020-11-26 06:00",
    "end": "2020-11-27 06:00"
@@ -443,7 +443,7 @@
   "well": "forge",
   "slice": "control",
   "family": "depth",
-  "question": "Check the hole-depth record of the rig data between 2020-11-27 06:00 and 2020-11-28 06:00 for consistency.",
+  "question": "Check the hole-depth record of the rig data between 2020-11-27 06:00 and 2020-11-28 06:00 for consistency. If it contains an error, how large is it in feet?",
   "scope": {
    "start": "2020-11-27 06:00",
    "end": "2020-11-28 06:00"
@@ -461,7 +461,7 @@
   "well": "forge",
   "slice": "control",
   "family": "depth",
-  "question": "Check the hole-depth record of the rig data between 2020-12-07 06:00 and 2020-12-08 06:00 for consistency.",
+  "question": "Check the hole-depth record of the rig data between 2020-12-07 06:00 and 2020-12-08 06:00 for consistency. If it contains an error, how large is it in feet?",
   "scope": {
    "start": "2020-12-07 06:00",
    "end": "2020-12-08 06:00"
@@ -745,7 +745,7 @@
   "well": "forge",
   "slice": "injected",
   "family": "survey",
-  "question": "Are the survey stations reported between 10111 and 10711 ft MD consistent across documents?",
+  "question": "Are the survey stations reported between 10111 and 10711 ft MD consistent across documents? If a station is wrong, what is its correct inclination?",
   "scope": {
    "depth_min": 10111.0,
    "depth_max": 10711.0
@@ -777,7 +777,7 @@
   "well": "forge",
   "slice": "injected",
   "family": "survey",
-  "question": "Are the survey stations reported between 9318 and 9918 ft MD consistent across documents?",
+  "question": "Are the survey stations reported between 9318 and 9918 ft MD consistent across documents? If a station is wrong, what is its correct inclination?",
   "scope": {
    "depth_min": 9318.0,
    "depth_max": 9918.0
@@ -809,7 +809,7 @@
   "well": "forge",
   "slice": "injected",
   "family": "survey",
-  "question": "Are the survey stations reported between 8748 and 9348 ft MD consistent across documents?",
+  "question": "Are the survey stations reported between 8748 and 9348 ft MD consistent across documents? If a station is wrong, what is its correct inclination?",
   "scope": {
    "depth_min": 8748.0,
    "depth_max": 9348.0
@@ -841,7 +841,7 @@
   "well": "forge",
   "slice": "control",
   "family": "survey",
-  "question": "Are the survey stations reported between 9033 and 9633 ft MD consistent across documents?",
+  "question": "Are the survey stations reported between 9033 and 9633 ft MD consistent across documents? If a station is wrong, what is its correct inclination?",
   "scope": {
    "depth_min": 9033.0,
    "depth_max": 9633.0
@@ -859,7 +859,7 @@
   "well": "forge",
   "slice": "control",
   "family": "survey",
-  "question": "Are the survey stations reported between 9824 and 10424 ft MD consistent across documents?",
+  "question": "Are the survey stations reported between 9824 and 10424 ft MD consistent across documents? If a station is wrong, what is its correct inclination?",
   "scope": {
    "depth_min": 9824.0,
    "depth_max": 10424.0
