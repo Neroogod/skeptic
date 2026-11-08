@@ -158,3 +158,31 @@ def test_forge_open_hole_friction_is_identifiable():
     rows = tnd.track_open_friction(forge, t0="2020-12-13", t1="2020-12-20")
     deep = [r for r in rows if r["state"] == "POOH" and r["sens_klb_per_mu"] > 100]
     assert deep and all(0.30 <= r["mu_open"] <= 0.40 and r["se"] < 0.05 for r in deep)
+
+
+@pytest.mark.skipif(not config.forge_available(), reason="FORGE data not found")
+def test_flat_depth_channels_are_explained_by_physics():
+    """Bit depth flat in slips and hole depth flat off bottom are normal; hole depth frozen while drilling is not."""
+    from skeptic.bench import inject
+    from skeptic.evidence import workspace
+    ws = workspace.load("forge")
+    e = ws.edr["edr"]
+    bit = qc.stuck_channel(e, "bit_depth_ft", "2020-11-10 06:00", "2020-11-11 06:00")
+    assert bit["verdict"] == "not stuck" and bit["n_explained"] >= 3 and all(r["expected"] for r in bit["flat_runs"])
+    hole = qc.stuck_channel(e, "hole_depth_ft", "2020-11-27 06:00", "2020-11-28 06:00")
+    assert hole["verdict"] == "not stuck" and hole["n_explained"] >= 1
+    frozen = inject.apply(ws, dict(type="stuck_channel", feed="edr", channel="hole_depth_ft", start="2020-11-20 08:00", end="2020-11-20 11:00"))
+    assert qc.stuck_channel(frozen.edr["edr"], "hole_depth_ft", "2020-11-20 06:00", "2020-11-21 06:00")["verdict"] == "stuck"
+
+
+@pytest.mark.skipif(not has_tnd("forge"), reason="run scripts/export_tnd.py")
+def test_identifiability_needs_consistent_physical_trips():
+    """Deep trips 13-20 Dec agree (identifiable, ~0.35); logging trips 26-29 Dec give negative mu (not identifiable);
+    shallow trips 24-27 Nov barely see open hole (not identifiable)."""
+    ds = tnd.dataset("forge")
+    ok = tnd.identifiability(ds, "mu_open", tnd.select(ds, "2020-12-13", "2020-12-20"), t0="2020-12-13", t1="2020-12-20")
+    assert ok["verdict"] == "identifiable" and abs(ok["estimate"] - 0.35) < 0.03
+    bad = tnd.identifiability(ds, "mu_open", tnd.select(ds, "2020-12-26", "2020-12-29"), t0="2020-12-26", t1="2020-12-29")
+    assert bad["verdict"] == "not identifiable" and any("physical range" in r for r in bad["reasons"])
+    weak = tnd.identifiability(ds, "mu_open", tnd.select(ds, "2020-11-24", "2020-11-27"), t0="2020-11-24", t1="2020-11-27")
+    assert weak["verdict"] == "not identifiable" and "sensitivity" in weak["reasons"][0]

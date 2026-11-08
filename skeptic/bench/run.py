@@ -3,6 +3,7 @@
   .venv/bin/python -m skeptic.bench.run --configs fixed                  # no API key needed
   .venv/bin/python -m skeptic.bench.run --configs skeptic,react,rag --seeds 3 --wells forge
   .venv/bin/python -m skeptic.bench.run --configs skeptic --tasks forge-stuck-1,lsu-shoe-20
+  .venv/bin/python -m skeptic.bench.run --configs skeptic,react --wells test --seeds 3   # held-out test set
 
 Writes runs/<stamp>/traces.jsonl (one trace + score per run; LSU traces stay local:
 runs/ is git-ignored) and runs/<stamp>/summary.json.
@@ -21,12 +22,17 @@ from .baselines import fixed_pipeline
 from .tasks import load
 
 
+TASK_FILES = {"forge": "public/forge_tasks.json",      # development set (FORGE)
+              "lsu": "private/lsu_tasks.json",         # development set (LSU, private)
+              "test": "public/forge_test.json"}        # held-out test set (FORGE), frozen before any run
+
+
 def load_tasks(wells, ids=None):
     tasks = []
-    if "forge" in wells and (config.BENCH / "public" / "forge_tasks.json").exists():
-        tasks += load(config.BENCH / "public" / "forge_tasks.json")
-    if "lsu" in wells and (config.BENCH / "private" / "lsu_tasks.json").exists():
-        tasks += load(config.BENCH / "private" / "lsu_tasks.json")
+    for w in wells:
+        f = config.BENCH / TASK_FILES[w]
+        if f.exists():
+            tasks += load(f)
     if ids:
         tasks = [t for t in tasks if t.id in ids]
     return tasks
@@ -58,7 +64,7 @@ def run_one(task, cfg_name, seed=0, model=None):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--configs", default="fixed")
-    ap.add_argument("--wells", default="forge,lsu")
+    ap.add_argument("--wells", default="forge,lsu", help="task sets: forge, lsu (development), test (held out)")
     ap.add_argument("--tasks", default="")
     ap.add_argument("--seeds", type=int, default=1)
     ap.add_argument("--model", default=None)

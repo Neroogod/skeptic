@@ -28,8 +28,10 @@ class Task:
     note: str = ""
 
 
-# Tasks used while developing the harness (the live smoke test on 2026-11-07). Prompt and
-# tool fixes were made after seeing these, so results are reported with and without them.
+# The FORGE development set (forge_tasks.json) and the LSU tasks were used while building the
+# agent: prompts, tools and gates were changed after seeing results on them. The held-out test
+# set (forge_test.json, ids test-*) was frozen before any run. DEV_TASKS are the three tasks of
+# the very first live smoke test, left out even of the development tables.
 DEV_TASKS = {"forge-stuck-1", "forge-friction-answer", "forge-mw-unit-1"}
 
 

@@ -18,7 +18,7 @@ CSC 7700 individual project (LSU, Fall 2026). The physics (soft-string torque an
 | `skeptic/bench/` | Fault injector, benchmark builder with oracle validation, deterministic scorer, fixed-pipeline baseline, runner |
 | `app.py` | Streamlit demo, with live runs, a sabotage menu and trace replay |
 | `scripts/export_tnd.py` | One-off export of torque-and-drag inputs from the PETE pipeline |
-| `tests/` | 46 tests (evidence, physics, harness, benchmark, UI) |
+| `tests/` | 53 tests (evidence, physics, harness, benchmark, UI) |
 
 ## Setup
 
@@ -46,14 +46,23 @@ cp .env.example .env              # add OPENROUTER_API_KEY; set a spend limit on
 | `rag` | Text search only (the search-only assistant from the proposal) |
 | `fixed` | No LLM: runs every check on the structured scope and reports the first flag |
 
-## Benchmark (61 tasks)
+## Benchmark
 
-**FORGE, public (47 tasks):**
+Two sets. The **development set** (61 tasks) was used while building the agent, so prompts and tools
+were changed after seeing results on it. The **held-out test set** (63 FORGE tasks,
+`bench/public/forge_test.json`) was built from other days, facts and stations and frozen, with stated
+predictions, before any run (see PLAN.md, "v3 held-out test set").
+
+**Test set (63 tasks):** 37 injected faults, 19 clean controls, and 7 identify tasks: friction windows
+where the open-hole friction factor is determined (answer), or not (abstain: shallow trips, trips that
+disagree, logging trips with physically impossible fits).
+
+**Development set, FORGE, public (47 tasks):**
 - 30 injected faults: stuck channel, clock offset, one-stand depth shift, sensor drift, wrong mud weight, mud weight written as s.g., survey typo, hook-load unit error, a planted instruction in a report, and open audits
 - 14 clean controls
 - 3 natural problems: TFA vs nozzle sizes, an impossible BOP-test date, and the open-hole friction factor
 
-**LSU, private (14 tasks):**
+**Development set, LSU, private (14 tasks):**
 - 8 real conflicts, scored against the instructor's QC sheet, which is held out of the evidence
 - 2 explanations: the float-valve rediscovery and the trip-tank question
 - 1 abstain task
@@ -75,3 +84,7 @@ cp .env.example .env              # add OPENROUTER_API_KEY; set a spend limit on
 - 37 FORGE daily reports exist twice, byte-identical. They are parsed once.
 - FORGE reports give the 9⅝" shoe as both 5,110 and 5,113 ft.
 - FORGE bit 9: nozzles 4x12 + 4x11 give a TFA of 0.813 in², but the report says 0.910.
+- On FORGE logging trips (26-29 Dec 2020) a free zone-model fit gives a narrow CI for the open-hole friction factor,
+  but trip by trip the fitted value is negative. A narrow CI is not identifiability; the test now also requires the
+  trips to agree and the value to be physical.
+- The 2020-11-09 daily report's time log is about 18 minutes off the rig clock.

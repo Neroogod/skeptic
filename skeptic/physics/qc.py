@@ -17,12 +17,31 @@ def _window(df, t0=None, t1=None):
 
 
 # ------------------------------------------------------------------ stuck channel
+def _depth_activity(x, channel):
+    """Should a depth channel be moving? Hole depth changes only while drilling (on bottom
+    with flow); bit depth follows the block only out of slips. Returns (active, why)."""
+    if channel == "hole_depth_ft" and {"on_bottom", "flow_gpm"} <= set(x):
+        drilling = float(((x.on_bottom.fillna(0) > 0.5) & (x.flow_gpm.fillna(0) > 50)).mean())
+        return drilling >= 0.2, f"drilling (on bottom with flow) {drilling:.0%} of the run; hole depth must grow while drilling"
+    if channel == "bit_depth_ft" and {"in_slips", "block_ft"} <= set(x):
+        free = x[x.in_slips.fillna(1) < 0.5]
+        moving = len(free) >= 3 and float(free.block_ft.std()) > 1.0
+        return moving, (f"out of slips {len(free) / max(len(x), 1):.0%} of the run, block std there "
+                        f"{float(free.block_ft.std()) if len(free) > 2 else 0:.1f} ft; in slips the bit cannot move")
+    return None, None
+
+
 def stuck_channel(df, channel, t0=None, t1=None, min_minutes=60, tol=1e-9, reference=None):
     """Runs where `channel` repeats exactly while the rig is active (the reference channel
     moves). A healthy sensor always shows noise, so a flat line during activity means a
-    frozen value. Flat zeros are skipped: pumps off (SPP = 0) or no reading is physical."""
+    frozen value. Flat zeros are skipped: pumps off (SPP = 0) or no reading is physical.
+    Depth channels use physics instead of a reference channel: a flat hole depth off bottom,
+    or a flat bit depth in slips, is expected and reported as explained, not flagged."""
     reference = reference or ("block_ft" if channel == "hookload_klb" else "hookload_klb")
-    x = _window(df, t0, t1)[["t", channel] + ([reference] if reference in df and reference != channel else [])].dropna(subset=[channel])
+    depth = channel in ("hole_depth_ft", "bit_depth_ft")
+    extra = [c for c in ("on_bottom", "flow_gpm", "in_slips", "block_ft") if depth and c in df and c != channel]
+    cols = ["t", channel] + ([reference] if reference in df and reference != channel and reference not in extra else []) + extra
+    x = _window(df, t0, t1)[cols].dropna(subset=[channel])
     if len(x) < 3:
         return dict(check="stuck_channel", channel=channel, verdict="insufficient data", n=len(x))
     v = x[channel].values
@@ -37,16 +56,25 @@ def stuck_channel(df, channel, t0=None, t1=None, min_minutes=60, tol=1e-9, refer
         minutes = (b - a).total_seconds() / 60.0
         if minutes < min_minutes:
             continue
+        if depth:
+            should_move, why = _depth_activity(x.iloc[idx], channel)
+            if should_move is not None:
+                runs.append(dict(start=str(a), end=str(b), minutes=round(minutes), value=float(v[idx[0]]),
+                                 expected=not should_move, physics=why))
+                continue
         active = None
         if reference in x and reference != channel:
             r = x[reference].iloc[idx]
             active = float(r.std()) if r.notna().sum() > 2 else None
         runs.append(dict(start=str(a), end=str(b), minutes=round(minutes), value=float(v[idx[0]]),
-                         reference_std_during=None if active is None else round(active, 2)))
-    flagged = [r for r in runs if r["reference_std_during"] is None or r["reference_std_during"] > 1.0]
+                         reference_std_during=None if active is None else round(active, 2),
+                         expected=active is not None and active <= 1.0))
+    flagged = [r for r in runs if not r["expected"]]
     return dict(check="stuck_channel", channel=channel, window=[str(x.t.iloc[0]), str(x.t.iloc[-1])],
                 n_rows=len(x), channel_std=round(float(np.nanstd(v)), 4), flat_runs=runs[:10],
-                verdict="stuck" if flagged else "not stuck")
+                n_flagged=len(flagged), n_explained=len(runs) - len(flagged),
+                verdict="stuck" if flagged else "not stuck",
+                note="expected=true: the flat run has a physical explanation (rig idle, off bottom, or in slips)")
 
 
 # ------------------------------------------------------------------ clock offset
@@ -82,10 +110,13 @@ def clock_offset_activity(edr, activity, t0, t1, max_lag_min=240):
             rep[(rep.index >= pd.Timestamp(s)) & (rep.index < pd.Timestamp(e))] = 1.0
     (lag, c), scores = best_lag(rep, a, max_lag_min)
     zero = scores.get(0)
+    near = [k for k, s in scores.items() if s >= c - 0.02]          # lags almost as good as the best one
     return dict(check="clock_offset", compared="report activity log vs EDR on-bottom drilling", window=[str(t0), str(t1)],
                 best_lag_min=lag, corr_at_best=round(c, 3), corr_at_zero=None if zero is None else round(zero, 3),
+                lag_range_min=[min(near), max(near)] if near else None,
                 verdict="offset" if abs(lag) >= 15 and zero is not None and c - zero > 0.1 else "aligned",
-                note="positive lag: EDR events happen later than the report says")
+                note="positive lag: EDR events happen later than the report says. lag_range_min: lags that fit almost as well "
+                     "(report times are rounded, so the offset is only known to about this range)")
 
 
 def clock_offset_series(a_df, b_df, channel, t0, t1, max_lag_min=240):

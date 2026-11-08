@@ -7,6 +7,7 @@ Per task:
   false_alarm     for control tasks: verdict == fault_found
   abstained       verdict in (abstain, unexplained)
   confident_wrong not correct and confidence >= 0.7 and not abstained
+A harness fallback abstention (no answer passed the gates within budget) is never correct.
 """
 import numpy as np
 
@@ -25,7 +26,10 @@ def score(task, answer):
     v = answer.get("verdict")
     ok = v in k["verdicts"]
     reasons = []
-    if not ok:
+    if answer.get("fallback"):                       # harness abstained because nothing passed the gates: never credited
+        ok = False
+        reasons.append("no answer passed the gates (fallback abstain)")
+    elif not ok:
         reasons.append(f"verdict {v} not in {k['verdicts']}")
     if ok and v == "fault_found" and k.get("fault_types"):
         if norm_type(answer.get("fault_type")) not in {norm_type(t) for t in k["fault_types"]}:

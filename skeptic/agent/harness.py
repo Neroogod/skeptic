@@ -8,7 +8,9 @@ One run = one question about one well:
        evidence ids exist -> numbers trace to tool results (verifier) -> ledger discipline ->
        identifiability gate (fitted parameters) -> skeptic review (a second model tries to refute)
      a rejected answer comes back as a tool error, so the model must fix it
-  5. budgets: max steps, max cost; repeated identical calls are refused (loop detection)
+  5. budgets: max steps, max cost; repeated identical calls are refused (loop detection). Near the
+     end of the budget, or when the model stops calling tools, submit_answer is forced; if still no
+     answer passes the gates, the run ends with an abstention (never with nothing)
 Everything is written to a trace for the benchmark and the UI.
 """
 import json
@@ -94,8 +96,14 @@ class Context:
                                 "them before concluding (this gate is applied once)")
             elif self.ledger.untested_supported():
                 problems.append(f"ledger: hypotheses {self.ledger.untested_supported()} are marked supported without evidence ids")
-        if cfg.identifiability_gate and self._claims_friction(ans) and not self._called("friction_identifiability", "friction_by_trip"):
-            problems.append("a friction factor is reported but its identifiability was never checked (friction_identifiability)")
+        if cfg.identifiability_gate and self._claims_friction(ans):
+            checks = [c for c in self.calls if c["name"] == "friction_identifiability" and c.get("verdict")]
+            if not checks:
+                problems.append("a friction factor is reported but its identifiability was never checked (friction_identifiability)")
+            elif not any(c["verdict"] == "identifiable" for c in checks):
+                problems.append(f"friction_identifiability says 'not identifiable' ({', '.join(c['id'] for c in checks)}): the data "
+                                "do not determine this friction factor. Report abstain (say what measurement would fix it), "
+                                "or show a window where it is identifiable")
         if not problems and cfg.skeptic and self.critic is not None and len(self.skeptic_reviews) < cfg.skeptic_rounds:
             review = self.review(ans)
             self.skeptic_reviews.append(review)
@@ -147,7 +155,8 @@ def run(ws, question, llm, cfg, critic=None, log=None, on_event=None):
     messages = [dict(role="system", content=cfg.system), dict(role="user", content=task_prompt(ws.well, question))]
     seen, nudges, stop = {}, 0, "max_steps"
     for step in range(cfg.max_steps):
-        force = ctx.usage["cost_usd"] > cfg.max_cost_usd or step == cfg.max_steps - 1
+        # force submit_answer near the end of the budget, or when the model stopped calling tools
+        force = ctx.usage["cost_usd"] > cfg.max_cost_usd or step >= cfg.max_steps - 2 or nudges >= 2
         if force:
             messages.append(dict(role="user", content="Budget reached. Call submit_answer now with what you have "
                                  "(abstain if the evidence is insufficient)."))
@@ -156,10 +165,11 @@ def run(ws, question, llm, cfg, critic=None, log=None, on_event=None):
         if not r["tool_calls"]:
             messages.append(dict(role="assistant", content=r["content"] or ""))
             nudges += 1
-            if nudges > 2:
+            if nudges > 3:
                 stop = "no_tool_calls"
                 break
-            messages.append(dict(role="user", content="Continue with tool calls; finish with submit_answer."))
+            if nudges < 2:
+                messages.append(dict(role="user", content="Continue with tool calls; finish with submit_answer."))
             continue
         messages.append(dict(role="assistant", content=r["content"] or None, tool_calls=[
             dict(id=c["id"], type="function", function=dict(name=c["name"], arguments=json.dumps(c["arguments"])))
@@ -172,6 +182,9 @@ def run(ws, question, llm, cfg, critic=None, log=None, on_event=None):
             if c["name"] not in cfg.tools:
                 out, text = {"error": f"tool {c['name']} is not available in this configuration"}, None
                 text = json.dumps(out)
+            elif "_unparseable" in c["arguments"]:
+                out = {"error": "your arguments were not valid JSON (cut off?). Send the call again with complete JSON."}
+                text = json.dumps(out)
             elif seen[key] > cfg.max_repeats and c["name"] != "submit_answer":
                 out = {"error": "identical call repeated; use the earlier result or try a different check"}
                 text = json.dumps(out)
@@ -180,7 +193,8 @@ def run(ws, question, llm, cfg, critic=None, log=None, on_event=None):
             hits = []
             if cfg.guard:
                 text, hits = annotate(text)
-            ctx.calls.append(dict(id=cid, name=c["name"], args=c["arguments"], text=text, guard_hits=hits, step=step))
+            ctx.calls.append(dict(id=cid, name=c["name"], args=c["arguments"], text=text, guard_hits=hits, step=step,
+                                  verdict=out.get("verdict") if isinstance(out, dict) else None))
             ctx.call_ids.add(cid)
             if on_event:
                 on_event(ctx.calls[-1], ctx)
@@ -190,6 +204,10 @@ def run(ws, question, llm, cfg, critic=None, log=None, on_event=None):
         if done:
             stop = "answered"
             break
+    if ctx.ledger.answer is None:
+        # no answer passed the gates within budget: the system refuses rather than release an unverified one
+        ctx.ledger.answer = dict(verdict="abstain", confidence=0.0, evidence=[], fallback=True,
+                                 explanation=f"No answer passed the checks within the budget (stop: {stop}).")
     trace = dict(config=cfg.name, model=getattr(llm, "model", "?"), well=ws.well, question=question,
                  answer=ctx.ledger.answer, stop=stop, steps=step + 1, n_calls=len(ctx.calls),
                  calls=[{k: v for k, v in c.items()} for c in ctx.calls], ledger=ctx.ledger.table(),

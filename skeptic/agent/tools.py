@@ -355,9 +355,9 @@ def hookload_model(ws, model, start=None, end=None, mud_weight_ppg=None):
     return out
 
 
-@tool("friction_identifiability", "Can a friction factor be determined from the data? Fits the zone model and compares the "
-      "95% CI half-width of the parameter with a tolerance; reports how much of the hook-load sensitivity to friction comes "
-      "from cased vs open hole. Use BEFORE reporting a friction factor.",
+@tool("friction_identifiability", "Can a friction factor be determined from the data in this window? mu_open needs (1) at "
+      "least one trip whose hook loads are sensitive to it, (2) trips that agree with each other, (3) a physical value "
+      "(0-0.6). Also reports the free zone-model fit and the cased/open sensitivity split. Use BEFORE reporting a friction factor.",
       dict(parameter=dict(type="string", enum=["mu_open", "mu_cased"]), start=S(TIME), end=S(TIME), tolerance=N("acceptable +/- (default 0.1)")),
       ["parameter"])
 def friction_identifiability(ws, parameter, start=None, end=None, tolerance=0.1):
@@ -365,7 +365,7 @@ def friction_identifiability(ws, parameter, start=None, end=None, tolerance=0.1)
     idx = tnd.select(ds, start, end)
     if len(idx) < 10:
         raise ValueError(f"only {len(idx)} steady trip events in this window; widen it")
-    return tnd.identifiability(ds, parameter, idx, tolerance=tolerance)
+    return tnd.identifiability(ds, parameter, idx, tolerance=tolerance, t0=start, t1=end)
 
 
 @tool("friction_by_trip", "Open-hole friction factor fitted trip by trip (weight terms held at the well's global fit). "

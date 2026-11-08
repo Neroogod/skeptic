@@ -114,13 +114,34 @@ def test_ledger_evidence_ids_must_exist(ws):
 
 
 def test_identifiability_gate(ws):
-    fr = submit(quantity="open-hole friction factor mu_open", value=0.35, unit="", explanation="mu is 0.35 (c1)", evidence="c1")
-    llm = ScriptedLLM([call("get_facts", quantity="mud_weight", qualifier="mud check", start="2020-12-14", end="2020-12-16"), fr,
-                       call("friction_by_trip", start="2020-12-13", end="2020-12-20"), dict(fr, tool_calls=[dict(name="submit_answer", arguments=dict(
-                           json.loads(json.dumps(fr["tool_calls"][0]["arguments"])), evidence="c3"))])])
+    """A friction factor is accepted only after friction_identifiability said 'identifiable'."""
+    fr = lambda ev: submit(quantity="open-hole friction factor mu_open", value=0.35, unit="", explanation="mu is 0.35", evidence=ev)
+    llm = ScriptedLLM([call("get_facts", quantity="mud_weight", qualifier="mud check", start="2020-12-14", end="2020-12-16"), fr("c1"),
+                       call("friction_identifiability", parameter="mu_open", start="2020-12-26", end="2020-12-29"), fr("c3"),
+                       call("friction_identifiability", parameter="mu_open", start="2020-12-13", end="2020-12-20"), fr("c5")])
     tr = harness.run(ws, "What was the open-hole friction factor?", llm, bare(identifiability_gate=True))
-    assert "identifiability" in tr["rejections"][0]
-    assert tr["stop"] == "answered"
+    assert "never checked" in tr["rejections"][0]
+    assert "not identifiable" in tr["rejections"][1] and "c3" in tr["rejections"][1]
+    assert tr["stop"] == "answered" and tr["answer"]["value"] == 0.35
+
+
+def test_run_always_ends_with_an_answer(ws):
+    """A model that stops calling tools is forced to submit; if nothing passes, the run abstains (scored wrong)."""
+    from skeptic.bench import score as S
+    from skeptic.bench.tasks import Task
+    llm = ScriptedLLM([call("get_facts", quantity="casing_shoe_depth", qualifier="9.63")] + [dict(content="The shoe is at 5113 ft.")] * 3 + [submit()])
+    tr = harness.run(ws, Q, llm, bare())
+    assert tr["stop"] == "answered" and tr["answer"]["value"] == 5113
+    tr = harness.run(ws, Q, ScriptedLLM([dict(content="thinking")] * 10), bare(max_steps=6))
+    assert tr["answer"]["verdict"] == "abstain" and tr["answer"]["fallback"]
+    t = Task("x", "forge", "identify", "friction", Q, {}, dict(verdicts=["abstain"]))
+    assert S.score(t, tr["answer"])["correct"] is False
+
+
+def test_unparseable_arguments_get_a_clear_error(ws):
+    llm = ScriptedLLM([call("get_facts", _unparseable='{"quantity": "casing_sh'), call("get_facts", quantity="casing_shoe_depth"), submit(evidence="c2")])
+    tr = harness.run(ws, Q, llm, bare())
+    assert "not valid JSON" in tr["calls"][0]["text"] and tr["stop"] == "answered"
 
 
 def test_skeptic_can_veto_once(ws):

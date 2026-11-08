@@ -88,16 +88,63 @@ Each phase ends with a gate. The next phase does not start until the gate passes
 3. GitHub repo name, and whether it is public (FORGE only) or private.
 4. Later: about 20 ChatGPT/Claude web-upload runs for the "existing interface" baseline.
 
-## Status (2026-11-07)
+## Status (2026-11-08)
 
 | Phase | State |
 |---|---|
 | 0 Env | done (Python 3.12 venv, .gitignore guards LSU data) |
 | 1 Evidence | done: FORGE 4.8k facts / 476 chunks, LSU 1.3k facts / 2k chunks; golden tests pass |
 | 2 Physics + QC | done: reproduces the PETE fits and FORGE per-trip mu (within 0.010) |
-| 3 Benchmark | done: 61 tasks, every fault oracle-validated, controls clean |
+| 3 Benchmark | done: development set 61 tasks; held-out test set 63 tasks (below) |
 | 4 Harness | done: scripted-LLM tests for every gate |
-| 5 Scorer + baselines | done: fixed pipeline scores 0.79 overall (injected 0.81, real 0.60, identify 0.50, explain 0.00) |
-| 6 Live LLM runs | **blocked: needs OPENROUTER_API_KEY** |
+| 5 Scorer + baselines | done |
+| 6 Live LLM runs | v1 and v2 on the development set done (Haiku 5.5); v3 test run pending |
 | 7 UI | done (Streamlit, sabotage menu, replay); renders headlessly in tests |
-| 8 Self-review | first pass done (fixed: identifiability gate bypass, verifier tolerance, QC false positives) |
+| 8 Self-review | done twice (2026-11-07, 2026-11-08), see below |
+
+## v2 failure analysis (2026-11-08, development set)
+
+Skeptic lost 8 tasks that ReAct won and won 4 that ReAct lost. From the traces:
+
+| Cause | Tasks | Fix (applies to every configuration) |
+|---|---|---|
+| Run ended with no answer (model stopped calling tools) | 1 Skeptic, 2 ReAct | submit_answer is forced; if nothing passes the gates the run abstains, and that abstention is scored wrong |
+| fault_found without a fault_type | 2 | gate added on 2026-11-07 |
+| Answer key ignored the report's natural 18-min offset on 2020-11-09 | 1 | clock keys accept 15 min around the injected offset or the injected plus the natural offset |
+| Stuck check flagged bit depth in slips / hole depth off bottom | 1 + 1 ReAct false alarm | depth channels judged by physics (drilling / out of slips), flat runs with a physical cause reported as explained |
+| Reviewer judged drift on the whole well, not the asked week | 1 | one-line scope rule in the reviewer prompt |
+| Verdict 'answer' for a correct clock offset | 1 | none (model error) |
+| LSU explanation (float valve) abstained | 1 | none |
+
+The identifiability gate only checked that the tool was *called*; it now requires the tool to have said
+"identifiable". The identifiability test itself now requires precision, agreement between trips and a
+physical value, because the free zone fit gave narrow CIs on logging trips whose trip-by-trip mu is negative.
+
+The reviewer, measured on v2 traces: 7 rejections, 1 turned a wrong answer right, 1 turned a right answer
+into an abstention, 5 changed nothing.
+
+A 10-task check after the fixes (Skeptic only, $0.30) passed 6 of the 8 earlier losses. It re-ran tasks
+chosen *because* they had failed, so it verifies the fixes and is not a result.
+
+## v3 held-out test set: pre-registration (frozen 2026-11-08, before any LLM run on it)
+
+- **Tasks:** `bench/public/forge_test.json`, 63 tasks, SHA-256
+  `d97f431ba3302e90a19d8e7bc61b508bf4eeeb01e78944b7acf9642954e397c2`. Built by
+  `python -m skeptic.bench.build test` (spec `TEST` in `build.py`): 13 drilling days whose windows do
+  not overlap any development window, seed 11, other offsets and shift sizes, no mud check / pick-up
+  report used by the development set, no survey station the development set injected.
+  37 injected, 19 controls, 7 identify (3 windows where the open-hole friction factor is determined,
+  4 where the right answer is to abstain). Every injected fault is oracle-validated; every control
+  passes its oracle.
+- **Code:** frozen at the commit that adds this section. No prompt, tool, gate or key change after
+  the first test run; a later change needs a new test set.
+- **Runs:** `skeptic` and `react` with Claude Haiku 5.5, 3 seeds (seed 0 at temperature 0, seeds 1-2
+  at 0.7); `fixed` (no LLM).
+- **Primary analysis:** accuracy, Skeptic minus ReAct, paired by task (mean over seeds), bootstrap 95%
+  CI over tasks and sign-flip permutation p (`skeptic.bench.report`).
+- **Predictions made before the run:**
+  1. Skeptic's false-alarm rate on controls is at most ReAct's.
+  2. Skeptic is more accurate than ReAct on the identify slice.
+  3. No prediction on overall accuracy; it is reported either way.
+  4. Skeptic costs about twice as much per task as ReAct.
+- Every result is reported, including any that go against these predictions.

@@ -198,11 +198,23 @@ def sensitivity(ds, idx, th=None, h=0.01):
                 share_cased_hole=round(float(np.abs(d["mu_cased"]).sum() / max(tot, 1e-12)), 3))
 
 
-def identifiability(ds, parameter, idx, model="zone_mu_and_fill", tolerance=0.1):
-    """Is `parameter` pinned down by these events? Fit the model, read the standard error
-    from the Fisher information (Jacobian), and compare the 95% half-width with the
-    tolerance a user would need (default +/-0.1 in friction factor).
-    Verdict 'identifiable' needs half-width <= tolerance AND no fatal plausibility flag."""
+MIN_TRIP_SENS = 20.0      # klb of hook load per unit mu: below this a trip barely constrains mu_open
+MU_RANGE = (0.0, 0.6)     # steel on rock or casing in mud
+
+
+def identifiability(ds, parameter, idx, model="zone_mu_and_fill", tolerance=0.1, t0=None, t1=None):
+    """Is `parameter` pinned down by these events? Three tests, all required for mu_open:
+
+      precise     at least one trip whose hook loads are sensitive to mu_open (>= 20 klb per
+                  unit mu), with the weight terms held at the well's global fit
+      consistent  the trips agree: sensitivity-weighted spread of their estimates <= tolerance/2
+                  (one friction factor must explain every trip; disagreement means the model
+                  is missing something: tight hole, a different string, changing mud)
+      physical    every informative trip gives 0 <= mu <= 0.6
+
+    A narrow confidence interval alone is not enough: a mis-specified model can be precise
+    and wrong. The free zone-model fit (all parameters fitted, 95% half-width) is reported
+    as a second opinion. mu_cased has no trip-by-trip estimate, so it uses the zone fit alone."""
     fr = fit(ds, model, idx)
     names = MODELS[model]
     key = parameter if parameter in names else ("mu" if parameter.startswith("mu") and "mu" in names else None)
@@ -210,11 +222,37 @@ def identifiability(ds, parameter, idx, model="zone_mu_and_fill", tolerance=0.1)
         return dict(error=f"{parameter} is not a parameter of model {model}; choose from {names}")
     p = fr["params"][key]
     half = 1.96 * p["se"]
-    sens = sensitivity(ds, idx)
-    ok = half <= tolerance and not [f for f in fr["flags"] if "impossible" in f]
-    return dict(parameter=parameter, model=model, estimate=p["value"], ci95=p["ci95"], half_width=round(half, 3),
-                tolerance=tolerance, verdict="identifiable" if ok else "not identifiable",
-                sensitivity=sens, fit_flags=fr["flags"], strong_correlations=fr["correlations"], n_events=fr["n_events"])
+    zone = dict(model=model, estimate=p["value"], ci95=p["ci95"], half_width=round(half, 3), fit_flags=fr["flags"],
+                strong_correlations=fr["correlations"], n_events=fr["n_events"])
+    out = dict(parameter=parameter, tolerance=tolerance, sensitivity=sensitivity(ds, idx), zone_fit=zone)
+    if parameter != "mu_open":
+        ok = half <= tolerance and MU_RANGE[0] <= p["value"] <= MU_RANGE[1]
+        return out | dict(estimate=p["value"], verdict="identifiable" if ok else "not identifiable",
+                          reasons=[] if ok else [f"zone-fit 95% half-width {half:.3f} vs tolerance {tolerance}, estimate {p['value']}"])
+    if t0 is None and len(idx):
+        t0, t1 = str(ds["ev"].t.values[idx].min())[:19], str(ds["ev"].t.values[idx].max())[:19]
+    trips = track_open_friction(ds, t0, t1)
+    inf = [r for r in trips if r["sens_klb_per_mu"] >= MIN_TRIP_SENS]
+    reasons = []
+    pooled = spread = None
+    if not inf:
+        reasons.append(f"no trip with open-hole sensitivity >= {MIN_TRIP_SENS:g} klb per unit mu (too little open hole below the shoe)")
+    else:
+        w = np.array([r["sens_klb_per_mu"] ** 2 for r in inf])
+        m = np.array([r["mu_open"] for r in inf])
+        pooled = float(np.sum(w * m) / np.sum(w))
+        spread = float(np.sqrt(np.sum(w * (m - pooled) ** 2) / np.sum(w)))
+        bad = [r for r in inf if not MU_RANGE[0] <= r["mu_open"] <= MU_RANGE[1]]
+        if bad:
+            reasons.append(f"trip(s) {[r['trip'] for r in bad]} give mu_open {[r['mu_open'] for r in bad]}, outside the "
+                           f"physical range {MU_RANGE}: the model does not describe these trips")
+        if spread > tolerance / 2:
+            reasons.append(f"trips disagree: weighted spread {spread:.3f} > {tolerance / 2:g} (estimates {sorted(m.round(3).tolist())})")
+    return out | dict(estimate=None if pooled is None else round(pooled, 3), trip_spread=None if spread is None else round(spread, 3),
+                      informative_trips=[dict(trip=r["trip"], state=r["state"], start=r["start"], mu_open=r["mu_open"],
+                                              sens_klb_per_mu=r["sens_klb_per_mu"]) for r in inf],
+                      n_weak_trips=len(trips) - len(inf), verdict="not identifiable" if reasons else "identifiable",
+                      reasons=reasons, method="trip-by-trip mu_open with weight terms held at the well's global fit")
 
 
 def track_open_friction(ds, t0=None, t1=None, min_events=6, open_ft=None):

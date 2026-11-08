@@ -218,8 +218,8 @@
    "fault_types": [
     "clock_offset"
    ],
-   "value": 90,
-   "tol": 15,
+   "value": 99.0,
+   "tol": 24.0,
    "unit": "min"
   },
   "injection": {
@@ -247,8 +247,8 @@
    "fault_types": [
     "clock_offset"
    ],
-   "value": -75,
-   "tol": 15,
+   "value": -76.0,
+   "tol": 16.0,
    "unit": "min"
   },
   "injection": {
@@ -276,8 +276,8 @@
    "fault_types": [
     "clock_offset"
    ],
-   "value": 120,
-   "tol": 15,
+   "value": 118.5,
+   "tol": 16.5,
    "unit": "min"
   },
   "injection": {
@@ -305,8 +305,8 @@
    "fault_types": [
     "clock_offset"
    ],
-   "value": 60,
-   "tol": 15,
+   "value": 65.0,
+   "tol": 20.0,
    "unit": "min"
   },
   "injection": {

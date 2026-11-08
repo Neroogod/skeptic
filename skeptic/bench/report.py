@@ -2,14 +2,17 @@
 
   .venv/bin/python -m skeptic.bench.report runs/20261107-1830 runs/20261107-1905
 
-If a (config, task, seed) appears in several runs, the latest run wins. Development
-tasks (bench.tasks.DEV_TASKS) are excluded from the headline table and reported apart.
+If a (config, task, seed) appears in several runs, the latest run wins. The held-out test
+set (task ids test-*) is the headline; the development set (FORGE + LSU tasks used while
+building the agent) is reported apart. Paired comparisons average each task over seeds,
+then bootstrap over tasks (95% CI) and use a sign-flip permutation test (p).
 Only aggregates are printed, so the output may mention LSU slices without exposing LSU values.
 """
 import json
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from . import score as S
@@ -22,7 +25,7 @@ def load_rows(dirs, rescore=True):
     """Rows from saved runs. rescore=True re-scores every saved answer against the CURRENT
     task keys, so a corrected key applies to old runs without new LLM calls."""
     from .run import load_tasks
-    keys = {t.id: t for t in load_tasks(["forge", "lsu"])} if rescore else {}
+    keys = {t.id: t for t in load_tasks(["forge", "lsu", "test"])} if rescore else {}
     rows = {}
     for d in sorted(dirs):
         f = Path(d) / "traces.jsonl"
@@ -56,17 +59,51 @@ def fmt(df):
     return df.to_markdown(index=False, floatfmt=".3f")
 
 
+def paired(df, a, b, metric="correct", n=10000, seed=0):
+    """a vs b on the same tasks: per-task mean over seeds, bootstrap CI and sign-flip p for the mean difference."""
+    g = df[df.config.isin([a, b])].assign(m=lambda x: x[metric].astype(float)).groupby(["task", "config"]).m.mean().unstack().dropna()
+    if a not in g or b not in g or not len(g):
+        return None
+    d = (g[a] - g[b]).values
+    rng = np.random.default_rng(seed)
+    boot = rng.choice(d, (n, len(d))).mean(1)
+    flips = rng.choice([-1.0, 1.0], (n, len(d)))
+    p = float(np.mean(np.abs((flips * d).mean(1)) >= abs(d.mean()) - 1e-12))
+    return {"compare": f"{a} - {b}", "tasks": len(d), a: g[a].mean(), b: g[b].mean(), "diff": d.mean(),
+            "ci95_low": np.percentile(boot, 2.5), "ci95_high": np.percentile(boot, 97.5), "p": p,
+            f"{a}_better": int((d > 0).sum()), f"{b}_better": int((d < 0).sum())}
+
+
+def paired_table(df, a="skeptic", b="react"):
+    rows = [dict(slice="all", **r) for r in [paired(df, a, b)] if r]
+    for s_ in ("injected", "control", "identify"):
+        r = paired(df[df.slice == s_], a, b)
+        if r:
+            rows.append(dict(slice=s_, **r))
+    return pd.DataFrame(rows)
+
+
+def section(title, d):
+    parts = [f"## {title}\n", fmt(table(d)), "\n\n### Accuracy by family\n",
+             d.pivot_table(index="family", columns="config", values="correct", aggfunc="mean").round(2).to_markdown()]
+    pt = paired_table(d)
+    if len(pt):
+        parts += ["\n\n### Skeptic vs ReAct, paired by task\n", fmt(pt)]
+    return parts
+
+
 def main(dirs):
     df = load_rows(dirs)
     if df.empty:
         print("no runs found")
         return
-    head = df[~df.task.isin(DEV_TASKS)]
-    parts = ["## Headline (development tasks excluded)\n", fmt(table(head)),
-             "\n\n## Accuracy by fault family\n",
-             head.pivot_table(index="family", columns="config", values="correct", aggfunc="mean").round(2).to_markdown(),
-             "\n\n## Development tasks only\n", fmt(table(df[df.task.isin(DEV_TASKS)])),
-             f"\n\nTotal cost: ${df.cost_usd.sum():.3f} over {len(df)} runs."]
+    test, dev = df[df.task.str.startswith("test-")], df[~df.task.str.startswith("test-")]
+    parts = []
+    if len(test):
+        parts += section("Held-out test set (headline)", test) + ["\n"]
+    if len(dev):
+        parts += section("Development set (first smoke-test tasks excluded)", dev[~dev.task.isin(DEV_TASKS)])
+    parts.append(f"\n\nTotal cost: ${df.cost_usd.sum():.3f} over {len(df)} runs.")
     text = "\n".join(parts)
     out = Path(dirs[0]).parent / "report.md"
     out.write_text(text)
