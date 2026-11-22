@@ -53,6 +53,7 @@ documents that the analyst followed. Reject ONLY for a fatal flaw: one that coul
 wrong. Small inconsistencies that do not change the conclusion (e.g. a measurement a little above a theoretical
 value, noisy sub-windows) are not fatal: mention them, but accept. Judge the analysis on the window and records the
 question asks about: a check run over a wider window can dilute a local fault and does not refute it.
+Give at most 3 objections, one or two sentences each.
 Reply with JSON only: {"decision": "accept" | "reject", "objections": ["..."], "suggested_check": "..."}"""
 
 

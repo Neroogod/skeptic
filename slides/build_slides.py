@@ -1,15 +1,16 @@
-"""Build the CSC 7700 final-presentation deck.
+"""Build the CSC 7700 final-report deck (10 slides, in the order the course asks for).
 
-Every result number is computed here from the committed runs (results/test_set, FORGE only),
-the task files (bench/public) and results/v4_friction_windows.json, so the deck cannot drift
-from the code. Figures come from slides/build_figures.py (run it first).
+Every result number is computed here from the committed runs (results/test_set, FORGE only), the
+task files (bench/public) and results/v4_friction_windows.json, so the deck cannot drift from the
+code. The few development-set numbers come from RESULTS.md (those runs include LSU data and stay
+local). Figures come from slides/build_figures.py (run it first).
 
     .venv/bin/python slides/build_figures.py
     .venv/bin/python slides/build_slides.py      ->  slides/Skeptic_CSC7700_Oghale.pptx
 
-Style follows the author's PETE 7103 deck (LSU purple and gold); fonts are Arial / Arial
-Narrow so the deck renders the same on any machine.
+Dark theme with LSU gold; Arial / Arial Narrow so it renders the same on any machine.
 """
+import gzip
 import json
 import sys
 from collections import Counter
@@ -25,40 +26,57 @@ from pptx.util import Inches, Pt
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from skeptic.agent import harness, tools as T         # noqa: E402
-from skeptic.bench import report, score as S          # noqa: E402
+from skeptic.bench import report                      # noqa: E402
 
 FIG = ROOT / "slides" / "figures"
 OUT = ROOT / "slides" / "Skeptic_CSC7700_Oghale.pptx"
-PURPLE, GOLD, INK, LAV, MUTED, BG, WHITE, FLAG = (RGBColor.from_string(c) for c in
-    ("461D7C", "FDD023", "2A1050", "E9E2F3", "6E6680", "F7F5FA", "FFFFFF", "B3261E"))
-HEAD, BODY = "Arial Narrow", "Arial"
-FOOTER = "VICTORY OGHALE · CSC 7700 · LSU"
+REPO = "github.com/Neroogod/skeptic"
+rgb = RGBColor.from_string
+BG1, BG2, PANEL, EDGE = rgb("1D1233"), rgb("0B0714"), rgb("1A1130"), rgb("3A2C5A")
+WHITE, TEXT, MUTED, GOLD = rgb("FFFFFF"), rgb("F3EEFB"), rgb("A89CC8"), rgb("FDD023")
+FX, CHIP = rgb("109AAE"), rgb("4B3A78")                            # teal accent (data / evaluation), tool chips
+OK, PART, BAD = rgb("2FA36B"), rgb("C98A00"), rgb("D9483B")         # status chips, always with a word
+OK_TXT, BAD_TXT = rgb("6EE7A8"), rgb("FF8A80")
+HEAD, BODY, MONO = "Arial Narrow", "Arial", "Menlo"
+FOOTER = "VICTORY OGHALE  ·  CSC 7700  ·  LSU  ·  FALL 2026"
 
 
 # =========================================================================== numbers
+def critic_replies(path):
+    """How the critic's replies went in the scored Skeptic runs: all, cut off, cut off while rejecting."""
+    c = Counter()
+    for line in gzip.open(path, "rt"):
+        r = json.loads(line)
+        if r["row"]["config"] != "skeptic":
+            continue
+        for rv in r["trace"].get("skeptic_reviews") or []:
+            cut = bool(rv.get("parse_error"))
+            c["all"] += 1
+            c["cut"] += cut
+            c["cut_reject"] += cut and '"reject"' in rv["parse_error"]
+    return c
+
+
 def numbers():
     """Everything the slides quote, from the committed test-set runs and task files."""
     runs = [ROOT / "results" / "test_set" / "llm", ROOT / "results" / "test_set" / "fixed"]
     df = report.load_rows([str(d) for d in runs])
     df = df[df.task.str.startswith("test-")]
     t = report.table(df).set_index("config")
-    pair = {m: report.paired(df, "skeptic", "react", m) for m in ("correct", "confident_wrong", "abstained")}
     sure = {c: df[(df.config == c) & ~df.abstained & (df.confidence >= 0.7)] for c in ("skeptic", "react")}
-    fam = df.pivot_table(index="family", columns="config", values="correct", aggfunc="mean")
-    flawed = ["test-clock-control-1", "test-clock-control-3"]
     tasks = json.loads((ROOT / "bench" / "public" / "forge_test.json").read_text())
-    dev = json.loads((ROOT / "bench" / "public" / "forge_tasks.json").read_text())
     return dict(
-        t=t, pair=pair, fam=fam,
+        t=t, pair={m: report.paired(df, "skeptic", "react", m) for m in ("correct", "confident_wrong", "abstained")},
         sure={c: (g.correct.mean(), len(g)) for c, g in sure.items()},
-        without_flawed=df[~df.task.isin(flawed)].groupby("config").correct.mean().to_dict(),
-        runs={c: int((df.config == c).sum()) for c in ("skeptic", "react", "fixed")},
-        n_test=len(tasks), slices=Counter(x["slice"] for x in tasks), families=Counter((x["family"], x["slice"]) for x in tasks),
-        n_dev_forge=len(dev), n_dev_lsu=14,
-        cost_test=float(df.cost_usd.sum()),
-        n_tools=len(T.TOOLS), tool_groups={k: len(v) for k, v in (("evidence", harness.EVIDENCE_TOOLS), ("checks", harness.CHECK_TOOLS),
-                                                                   ("physics", harness.PHYSICS_TOOLS), ("ledger", harness.LEDGER_TOOLS))},
-        windows=json.loads((ROOT / "results" / "v4_friction_windows.json").read_text()))
+        fam=df.pivot_table(index="family", columns="config", values="correct", aggfunc="mean"),
+        without_flawed=df[~df.task.isin(["test-clock-control-1", "test-clock-control-3"])].groupby("config").correct.mean().to_dict(),
+        critic=critic_replies(runs[0] / "traces.jsonl.gz"),
+        runs=int((df.config == "skeptic").sum()), n_test=len(tasks), slices=Counter(x["slice"] for x in tasks),
+        n_dev_forge=len(json.loads((ROOT / "bench" / "public" / "forge_tasks.json").read_text())), n_dev_lsu=14,
+        dev_acc=dict(skeptic=0.759, react=0.810),                  # RESULTS.md, development set (local runs)
+        n_tools=len(T.TOOLS), limits=harness.Config("x"),
+        groups={k: len(v) for k, v in (("evidence", harness.EVIDENCE_TOOLS), ("checks", harness.CHECK_TOOLS),
+                                       ("physics", harness.PHYSICS_TOOLS), ("ledger", harness.LEDGER_TOOLS))})
 
 
 # =========================================================================== drawing helpers
@@ -67,113 +85,140 @@ prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
 BLANK = prs.slide_layouts[6]
 
 
-def text(slide, x, y, w, h, s, font=BODY, size=16, bold=False, color=INK, align=PP_ALIGN.LEFT, fill=None,
-         anchor=MSO_ANCHOR.TOP, space=6):
-    """Text box. s is a string, or a list of lines; a line may be a list of (text, bold) runs."""
-    tb = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+def gold_links():
+    """PowerPoint draws hyperlinks in the theme's hyperlink colour, not the run colour: set it to gold."""
+    from lxml import etree
+    from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+    theme = prs.slide_master.part.part_related_by(RT.THEME)
+    root = etree.fromstring(theme.blob)
+    for tag in ("hlink", "folHlink"):
+        el = root.find(f".//{qn('a:clrScheme')}/{qn('a:' + tag)}")
+        for child in list(el):
+            el.remove(child)
+        etree.SubElement(el, qn("a:srgbClr"), val="FDD023")
+    theme._blob = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+gold_links()
+
+
+def text(s, x, y, w, h, content, font=BODY, size=16, bold=False, color=TEXT, align=PP_ALIGN.LEFT,
+         anchor=MSO_ANCHOR.TOP, space=6, spacing=None, link=None):
+    """Text box. content: a string or a list of lines; a line may be a list of (text, bold[, colour]) runs."""
+    tb = s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
     tf = tb.text_frame
     tf.word_wrap, tf.vertical_anchor = True, anchor
-    tf.margin_left = tf.margin_right = Inches(0.12 if fill else 0.0)
-    tf.margin_top = tf.margin_bottom = Inches(0.05)
-    for i, line in enumerate(s if isinstance(s, list) else [s]):
+    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = Inches(0)
+    for i, line in enumerate(content if isinstance(content, list) else [content]):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.alignment, p.space_after = align, Pt(space)
-        for run_text, b in (line if isinstance(line, list) else [(line, bold)]):
+        for part in (line if isinstance(line, list) else [(line, bold)]):
             r = p.add_run()
-            r.text = run_text
-            r.font.name, r.font.size, r.font.bold, r.font.color.rgb = font, Pt(size), b, color
-    if fill is not None:
-        tb.fill.solid()
-        tb.fill.fore_color.rgb = fill
+            r.text = part[0]
+            r.font.size, r.font.bold = Pt(size), part[1]
+            r.font.color.rgb = part[2] if len(part) > 2 else color
+            r.font.name = font
+            if spacing:                                    # letter spacing, in 1/100 pt
+                r._r.get_or_add_rPr().set("spc", str(spacing))
+            if link and len(part) > 3:                     # (text, bold, colour, True): this run is the link
+                r.hyperlink.address = link
+                r.font.underline = False
     return tb
 
 
-def box(slide, x, y, w, h, s, fill=WHITE, line=PURPLE, size=14, color=INK, bold_first=True, align=PP_ALIGN.LEFT):
-    """Rounded box with a bold first line."""
-    sh = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
-    sh.adjustments[0] = 0.08
-    sh.fill.solid()
-    sh.fill.fore_color.rgb = fill
-    sh.line.color.rgb, sh.line.width = line, Pt(1.5)
+def glow(tb, color="FDD023", radius=120000, alpha=35000):
+    """Soft glow behind every run of a text box (DrawingML effectLst, placed before <a:latin>)."""
+    for p in tb.text_frame.paragraphs:
+        for r in p.runs:
+            rpr = r._r.get_or_add_rPr()
+            eff = rpr.makeelement(qn("a:effectLst"), {})
+            g = eff.makeelement(qn("a:glow"), {"rad": str(radius)})
+            c = g.makeelement(qn("a:srgbClr"), {"val": color})
+            c.append(c.makeelement(qn("a:alpha"), {"val": str(alpha)}))
+            g.append(c)
+            eff.append(g)
+            latin = rpr.find(qn("a:latin"))
+            if latin is not None:
+                latin.addprevious(eff)
+            else:
+                rpr.append(eff)
+
+
+def shape(s, kind, x, y, w, h, fill=PANEL, line=EDGE, weight=1.0, radius=0.06):
+    sh = s.shapes.add_shape(kind, Inches(x), Inches(y), Inches(w), Inches(h))
+    if kind == MSO_SHAPE.ROUNDED_RECTANGLE:
+        sh.adjustments[0] = radius
+    if fill is None:
+        sh.fill.background()
+    else:
+        sh.fill.solid()
+        sh.fill.fore_color.rgb = fill
+    if line is None:
+        sh.line.fill.background()
+    else:
+        sh.line.color.rgb, sh.line.width = line, Pt(weight)
     sh.shadow.inherit = False
-    tf = sh.text_frame
-    tf.word_wrap, tf.vertical_anchor = True, MSO_ANCHOR.MIDDLE
-    tf.margin_left = tf.margin_right = Inches(0.12)
-    for i, line_text in enumerate(s if isinstance(s, list) else [s]):
-        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        p.alignment, p.space_after = align, Pt(3)
-        r = p.add_run()
-        r.text = line_text
-        r.font.name, r.font.size, r.font.color.rgb = BODY, Pt(size if i or not bold_first else size + 1), color
-        r.font.bold = bold_first and i == 0
     return sh
 
 
-def arrow(slide, x1, y1, x2, y2, label=None, color=MUTED, lx=0.0, ly=-0.32):
-    c = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
-    c.line.color.rgb, c.line.width = color, Pt(2.25)
+def panel(s, x, y, w, h, line=EDGE, fill=PANEL, weight=1.0):
+    return shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h, fill, line, weight)
+
+
+def bar(s, x, y, w, h, color):
+    return shape(s, MSO_SHAPE.RECTANGLE, x, y, w, h, color, None)
+
+
+def chip(s, x, y, w, label, color, size=11, h=0.3):
+    sh = shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, x, y, w, h, color, None, radius=0.5)
+    tf = sh.text_frame
+    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = Inches(0)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    p = tf.paragraphs[0]
+    p.alignment = PP_ALIGN.CENTER
+    r = p.add_run()
+    r.text = label
+    r.font.name, r.font.size, r.font.bold, r.font.color.rgb = HEAD, Pt(size), True, WHITE
+    return sh
+
+
+def arrow(s, x1, y1, x2, y2, color=MUTED, weight=2.0):
+    c = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
+    c.line.color.rgb, c.line.width = color, Pt(weight)
     ln = c.line._get_or_add_ln()
     ln.append(ln.makeelement(qn("a:tailEnd"), {"type": "triangle", "w": "med", "len": "med"}))
-    if label:
-        text(slide, min(x1, x2) + lx, min(y1, y2) + ly, abs(x2 - x1) + 1.4, 0.3, label, BODY, 12, color=MUTED)
     return c
-
-
-def rect(slide, x, y, w, h, color):
-    sh = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
-    sh.fill.solid()
-    sh.fill.fore_color.rgb = color
-    sh.line.fill.background()
-    sh.shadow.inherit = False
-    return sh
-
-
-def slide(no, section, headline):
-    """Content slide: numbered section badge, section name, headline, footer."""
-    s = prs.slides.add_slide(BLANK)
-    s.background.fill.solid()
-    s.background.fill.fore_color.rgb = BG
-    text(s, 0.6, 0.42, 0.46, 0.42, f"{no:02d}", HEAD, 17, True, GOLD, PP_ALIGN.CENTER, fill=PURPLE, anchor=MSO_ANCHOR.MIDDLE)
-    text(s, 1.2, 0.47, 8.0, 0.35, section.upper(), HEAD, 15, True, PURPLE)
-    text(s, 0.6, 0.95, 12.1, 0.8, headline, HEAD, 30, True, INK)
-    text(s, 0.6, 7.02, 6.0, 0.3, FOOTER, HEAD, 11, color=MUTED)
-    return s
-
-
-def bullets(s, x, y, w, items, size=16, gap=0.62):
-    """(lead, rest) pairs with a purple bar; lead in bold."""
-    for i, (lead, rest) in enumerate(items):
-        rect(s, x, y + i * gap + 0.06, 0.05, gap - 0.2, PURPLE)
-        text(s, x + 0.2, y + i * gap, w - 0.2, gap, [[(lead + " ", True), (rest, False)]], BODY, size)
-
-
-def table(s, x, y, w, header, rows, widths, size=13, row_h=0.36, bold_col0=False):
-    tb = s.shapes.add_table(1 + len(rows), len(header), Inches(x), Inches(y), Inches(w), Inches(row_h * (1 + len(rows)))).table
-    for j, wd in enumerate(widths):
-        tb.columns[j].width = Inches(wd)
-    for i, row in enumerate([header] + rows):
-        for j, v in enumerate(row):
-            c = tb.cell(i, j)
-            c.text = str(v)
-            c.fill.solid()
-            c.fill.fore_color.rgb = PURPLE if i == 0 else (WHITE if i % 2 else LAV)
-            c.margin_left = c.margin_right = Inches(0.08)
-            c.margin_top = c.margin_bottom = Inches(0.03)
-            for p in c.text_frame.paragraphs:
-                for r in p.runs:
-                    r.font.name = HEAD if i == 0 else BODY
-                    r.font.size = Pt(size)
-                    r.font.bold = i == 0 or (bold_col0 and j == 0)
-                    r.font.color.rgb = GOLD if i == 0 else INK
-    return tb
-
-
-def callout(s, x, y, w, h, msg, size=18):
-    return text(s, x, y, w, h, msg, HEAD, size, True, WHITE, fill=PURPLE, anchor=MSO_ANCHOR.MIDDLE)
 
 
 def picture(s, name, x, y, w=None, h=None):
     return s.shapes.add_picture(str(FIG / name), Inches(x), Inches(y), Inches(w) if w else None, Inches(h) if h else None)
+
+
+def background(s):
+    f = s.background.fill
+    f.gradient()
+    f.gradient_angle = 125
+    stops = f.gradient_stops
+    stops[0].color.rgb, stops[0].position = BG1, 0.0
+    stops[1].color.rgb, stops[1].position = BG2, 1.0
+
+
+def fade(s):
+    """Fade transition (appended after <p:clrMapOvr>, which is where <p:transition> belongs)."""
+    tr = s._element.makeelement(qn("p:transition"), {"spd": "med"})
+    tr.append(tr.makeelement(qn("p:fade"), {}))
+    s._element.append(tr)
+
+
+def slide(kicker, headline):
+    s = prs.slides.add_slide(BLANK)
+    background(s)
+    bar(s, 0.7, 0.52, 0.42, 0.045, GOLD)
+    text(s, 1.22, 0.43, 10, 0.3, kicker.upper(), HEAD, 13, True, GOLD, spacing=250)
+    if headline:
+        text(s, 0.7, 0.78, 12.0, 0.8, headline, HEAD, 32, True, WHITE)
+    text(s, 0.7, 7.08, 8, 0.25, FOOTER, HEAD, 10, color=MUTED, spacing=150)
+    return s
 
 
 def notes(s, msg):
@@ -181,326 +226,385 @@ def notes(s, msg):
 
 
 pct = lambda v: f"{100 * v:.1f}%"
-SHORT = {"pick-up below zero-friction load": "pick-ups too light", "slack-off above zero-friction load": "slack-offs too heavy",
-         "beyond the largest friction": "need friction > 0.8"}
 
 
-def window(w):
-    """'12-08 to 12-09', or '12-07 08:00-11:00' for a window inside one day."""
-    a, b = w["start"], w["end"]
-    return f"{a[5:10]} {a[11:16]}-{b[11:16]}" if a[:10] == b[:10] else f"{a[5:10]} to {b[5:10]}"
+def stat(s, x, y, w, h, big, label, sub, color=GOLD):
+    """Hero number: big value, a bold label and a muted line under it."""
+    panel(s, x, y, w, h)
+    bar(s, x, y + 0.25, 0.06, h - 0.5, color)
+    text(s, x + 0.3, y + 0.22, w - 0.45, 0.95, big, HEAD, 40 if len(big) > 10 else 50, True, color)
+    text(s, x + 0.3, y + 1.15, w - 0.45, 0.4, label, BODY, 15, True, WHITE)
+    if sub:
+        text(s, x + 0.3, y + 1.52, w - 0.45, 0.5, sub, BODY, 12, color=MUTED)
 
 
 # =========================================================================== slides
-def title_slide():
+def title(N):
     s = prs.slides.add_slide(BLANK)
-    s.background.fill.solid()
-    s.background.fill.fore_color.rgb = PURPLE
-    rect(s, 0.6, 2.05, 1.4, 0.09, GOLD)
-    text(s, 0.6, 0.7, 12, 0.4, "CSC 7700 AI & LLM DEVELOPMENT · FINAL PROJECT", HEAD, 16, True, GOLD)
-    text(s, 0.6, 2.3, 12, 1.2, "Skeptic", HEAD, 66, True, WHITE)
-    text(s, 0.6, 3.55, 12, 0.8, "A falsification-first agent for drilling data", HEAD, 32, False, WHITE)
-    text(s, 0.6, 4.35, 11.5, 0.9, "It reconciles conflicting well records with physics as the referee, tests competing "
-         "explanations, and abstains when the data cannot decide.", BODY, 18, color=LAV)
-    text(s, 0.6, 6.25, 12, 0.4, "Victory Oghale · Louisiana State University · Fall 2026", HEAD, 18, False, WHITE)
-    notes(s, "Skeptic is an LLM agent for drilling records. It treats every answer as a hypothesis to try to "
-             "refute, uses physics to decide between conflicting sources, and is allowed to say the data cannot decide.")
+    background(s)
+    picture(s, "depth_art.png", 6.55, 0.15, h=7.2)
+    text(s, 0.7, 0.8, 7, 0.3, "CSC 7700 · AI & LLM DEVELOPMENT · FINAL REPORT", HEAD, 13, True, GOLD, spacing=250)
+    glow(text(s, 0.62, 1.35, 6.5, 1.6, "SKEPTIC", HEAD, 100, True, WHITE, spacing=300))
+    text(s, 0.7, 3.05, 5.7, 1.5, "A falsification-first LLM agent that checks drilling records against physics, "
+         "and abstains when the data cannot decide", BODY, 22, color=TEXT, space=4)
+    bar(s, 0.7, 4.75, 1.2, 0.05, GOLD)
+    text(s, 0.7, 4.98, 6, 0.45, "Victory Oghale", HEAD, 26, True, WHITE)
+    text(s, 0.7, 5.48, 6, 0.35, "MS, Petroleum Engineering  ·  Louisiana State University", BODY, 16, color=MUTED)
+    text(s, 0.7, 5.95, 6, 0.35, [[("Code  ", False, MUTED), (REPO, True, GOLD, True)]], BODY, 16, link="https://" + REPO)
+    text(s, 6.9, 7.05, 6.1, 0.3, "FORGE 16A rig log, 72 days: hole depth (gold) and every bit trip (violet)",
+         BODY, 10, color=MUTED, align=PP_ALIGN.RIGHT)
+    notes(s, "Skeptic is an LLM agent for drilling records. It treats every answer as a hypothesis to refute, uses physics "
+             "to decide between conflicting sources, and is allowed to say the data cannot decide. The picture is the real "
+             "rig log of the public well used for the test set.")
 
 
-def problem(N):
-    s = slide(1, "The problem", "Drilling records disagree, and some numbers cannot be known from them")
-    text(s, 0.6, 1.95, 5.6, 0.4, "Three records of the same well", HEAD, 20, True, PURPLE)
-    bullets(s, 0.6, 2.5, 5.6, [("Rig sensor log.", "A reading every 10 s: hook load, depths, pump pressure, torque."),
-                                ("Daily drilling reports.", "Typed by the crew: depths, mud weights, time log, bits."),
-                                ("Survey.", "Where the hole actually goes.")], size=16, gap=0.72)
-    text(s, 0.6, 4.75, 5.6, 0.4, "Everyday ways they go wrong", HEAD, 20, True, PURPLE)
-    text(s, 0.6, 5.2, 5.6, 1.5, "Frozen sensors, shifted clocks, wrong units, typos, depth shifts, and instructions "
-         "pasted into text an agent will read.", BODY, 16)
-    text(s, 6.8, 1.95, 6.0, 0.4, "Found in the public FORGE 16A records while building", HEAD, 20, True, PURPLE)
-    table(s, 6.8, 2.5, 5.95, ["Record", "What is wrong"], [
-        ["11-09 report time log", "about 18 minutes off the rig clock"],
-        ["9⅝\" casing shoe", "5,110 ft and 5,113 ft in different reports"],
-        ["Bit 9 nozzles 4x12 + 4x11", "TFA 0.813 in², report says 0.910"],
-        ["Daily reports", "37 exist twice, byte-identical"],
-        ["Logging trips 26-29 Dec", "a narrow friction CI, yet negative friction trip by trip"]],
-        [2.35, 3.6], size=13, row_h=0.42)
-    callout(s, 6.8, 5.35, 5.95, 1.2, "An LLM with tools tends to take the first number it finds and state it with "
-            "confidence. Skeptic is built to check it first.", 17)
-    notes(s, "These examples are real findings from the public FORGE records, made by the data checks, not by the LLM. "
-             "The last one matters most: a fit can look precise and still be physically impossible.")
-
-
-def prior_work(N):
-    s = slide(2, "Existing solutions and prior work", "The pieces exist; none of them referees sources with physics")
-    table(s, 0.6, 1.9, 12.1, ["Work", "What it gives", "What is missing for drilling records"], [
-        ["RAG (Lewis et al. 2020)", "Answers grounded in retrieved text", "No check that the retrieved number is right"],
-        ["ReAct (Yao et al. 2023)", "An LLM that reasons and calls tools", "No rule for conflicting sources or unknowable values (my baseline)"],
-        ["Reflexion (Shinn et al. 2023); debate (Du et al. 2024)", "A model critiques a model", "Critic shares the model's blind spots; no outside referee"],
-        ["Strong inference (Platt 1964)", "Competing hypotheses, a test that separates them", "A method for scientists, not an agent loop"],
-        ["Selective prediction (Geifman & El-Yaniv 2017)", "Abstention, risk-coverage curves", "Classifiers, not tool-using agents"],
-        ["Indirect prompt injection (Greshake et al. 2023)", "Attacks hidden in documents", "No defence built for well records"],
-        ["Soft-string torque and drag (Johancsik et al. 1984)", "Physics of hook load and friction", "A fixed calculation; never asks if friction can be known"]],
-        [3.7, 3.6, 4.8], size=13, row_h=0.47)
-    callout(s, 0.6, 5.85, 12.1, 0.8, "Gap: an agent that uses physics as the referee between sources, tests explanations "
-            "before answering, and abstains when the data cannot decide.", 18)
-    notes(s, "ReAct is the closest prior system, so it is my main baseline: same model, same tools, none of Skeptic's rules.")
-
-
-def scope(N):
-    s = slide(3, "Scope", "From the approved proposal (HydraulicsAgent) to Skeptic")
-    table(s, 0.6, 1.9, 12.1, ["Proposal item", "In Skeptic"], [
-        ["Custom parsers that keep provenance", "FORGE daily reports and 10-s rig log; LSU Pason, tour sheets, Halliburton, EOW. Every value keeps source and locator."],
-        ["LLM picks tools; physics computes numbers", f"Hand-written loop, {N['n_tools']} tools. A verifier rejects any number not found in a tool result."],
-        ["Disagreeing records: investigate or report uncertainty", "Hypothesis ledger, skeptic review, identifiability gate, abstention."],
-        ["Documents are data, not commands", "Injection guard; benchmark tasks with planted instructions."],
-        ["Compare with search-only and a fixed pipeline", "Both, plus ReAct with the same tools."],
-        ["Tested hydraulics tool", "Bit hydraulics, pump output and pressure losses, with unit tests."],
-        ["SPP error on held-out intervals", "Not evaluated: the benchmark targets record faults and friction instead."],
-        ["One hole section", f"Two wells; {N['n_test']}-task held-out test set (FORGE) and a {N['n_dev_forge'] + N['n_dev_lsu']}-task development set."]],
-        [3.9, 8.2], size=13, row_h=0.5)
-    notes(s, "The approved proposal was HydraulicsAgent. Skeptic keeps its parts and widens the question from one pressure "
-             "change to any conflict between records. The SPP prediction-error metric was not carried over.")
-
-
-def architecture(N):
-    g = N["tool_groups"]
-    s = slide(4, "Technical approach", "A hand-written agent loop, and gates every answer must pass")
-    box(s, 0.6, 2.65, 1.75, 1.1, ["Question", "about a well"], fill=LAV, size=13)
-    rect(s, 2.75, 1.95, 6.15, 4.75, WHITE).line.color.rgb = LAV
-    text(s, 2.95, 2.0, 5.8, 0.35, "Control loop (Python, no LangChain)", HEAD, 15, True, PURPLE)
-    box(s, 3.0, 2.45, 2.3, 1.45, ["LLM", "Claude Haiku 5.5 via OpenRouter", "OpenAI-format function calls"], size=12)
-    box(s, 6.05, 3.15, 2.65, 3.3, ["Tools", f"Evidence ({g['evidence']}): facts with provenance, BM25 search, rig log",
-                                   f"Checks ({g['checks']}): stuck sensor, clock, depth, survey, drift, units",
-                                   f"Physics ({g['physics']}): torque and drag, identifiability, physics data check, hydraulics",
-                                   f"Ledger ({g['ledger']}): competing hypotheses"], size=11)
-    arrow(s, 5.3, 3.35, 6.05, 3.35, "tool call", lx=-0.05)
-    arrow(s, 6.05, 3.7, 5.3, 3.7, "result", lx=0.05, ly=0.02)
-    text(s, 3.0, 4.3, 2.9, 1.9, ["Budgets on steps and cost", "Loop detection", "Bad arguments come back as errors",
-                                  "Always ends with an answer"], BODY, 12, color=MUTED, space=3)
-    box(s, 9.35, 2.2, 3.35, 3.0, ["An answer must pass", "Cited evidence ids exist", "Every number appears in a tool result",
-                                    "Two competing hypotheses when in doubt", "Friction only after 'identifiable'",
-                                    "A skeptic model tries to refute it", "Document text screened for instructions"], size=12, fill=WHITE)
-    arrow(s, 5.3, 2.65, 9.35, 2.65, None, color=PURPLE)
-    text(s, 6.2, 2.3, 2.2, 0.3, "submit_answer", BODY, 12, color=PURPLE)
-    arrow(s, 9.35, 4.85, 8.9, 4.85, None, color=FLAG)
-    text(s, 9.35, 5.3, 3.35, 0.3, "rejected: the reason goes back to the LLM", BODY, 11, color=FLAG)
-    box(s, 9.35, 5.85, 3.35, 0.85, ["Answer", "verdict, value, confidence, evidence; or abstain"], fill=LAV, size=12)
-    arrow(s, 2.35, 3.2, 3.0, 3.2)
-    notes(s, "The harness is my own loop, about 300 lines. The LLM only decides which tool to call; numbers come from the "
-             "tools. When the model submits, six gates check the answer; a failed gate sends the reason back and the "
-             "model must fix it. ReAct uses the same loop and tools without the gates.")
-
-
-def physics(N):
-    s = slide(5, "Technical approach", "Physics is the referee, and it also says when a number cannot be known")
-    bullets(s, 0.6, 1.95, 6.2, [
-        ("Torque and drag.", "Soft-string model (Johancsik 1984) with the float-valve fill state, reused from my PETE 7103 project."),
-        ("Identifiability.", "A friction factor is reported only if it is precise (trips move ≥ 20 klb per unit friction), "
-                             "consistent (the trips agree) and physical (between 0 and 0.6)."),
-        ("A narrow CI is not enough.", "On the FORGE logging trips the fit has a narrow CI, yet each trip gives negative friction."),
-        ("QC checks.", "Frozen sensor (judged by rig activity), clock offset, depth jumps, survey typos, block-weight drift, units."),
-        ("Hydraulics.", "Pump output, bit pressure drop, plugged-nozzle scenarios, TFA consistency.")], size=15, gap=0.95)
-    text(s, 7.2, 1.95, 5.5, 0.4, "Tool verdicts on the 7 friction windows (test set)", HEAD, 17, True, PURPLE)
-    rows = [[window(w), w["key"], w["identifiability"],
-             "-" if w["estimate"] is None else f"{w['estimate']:.3f}"] for w in N["windows"]]
-    table(s, 7.2, 2.45, 5.5, ["Window", "Key", "Tool verdict", "Trip-pooled μ"], rows, [1.85, 0.85, 1.6, 1.2], size=12, row_h=0.4)
-    callout(s, 7.2, 5.85, 5.5, 0.8, "The tool's verdict matches the key on all 7 windows.", 16)
-    notes(s, "Identifiability is the core physics idea. Friction is fitted trip by trip with the weight terms held at the "
-             "global fit; the three tests must all pass. The key for the 7 identify tasks is the tool's verdict, "
-             "checked when the test set was built.")
-
-
-def physics_check(N):
-    s = slide(6, "Technical approach", "Readings no friction factor can explain are not friction")
-    picture(s, "physics_check.png", 1.2, 1.8, w=10.9)
-    text(s, 0.6, 6.45, 12.1, 0.5, "Whatever the friction, a pick-up cannot weigh less than the frictionless string and a "
-         "slack-off cannot weigh more. Adapted from my PETE 7103 error control (stage P8); added after the test run.",
-         BODY, 13, color=MUTED)
-    notes(s, "Left: a deep trip out on 13 December. Every reading sits between the zero-friction line and the friction-0.8 "
-             "line, so friction can explain it. Right: the 27 December logging trip picks up 24 to 36 klb lighter than the "
-             "string would weigh with no friction at all. No friction value does that, so it is a record or sensor "
-             "problem. The same trip was found by the PETE pipeline.")
-
-
-def benchmark(N):
-    sl, fam = N["slices"], N["families"]
-    s = slide(7, "Evaluation", "Planted faults with known answers, and a test set frozen before any run")
-    bullets(s, 0.6, 1.95, 6.3, [
-        ("Known answers.", "Faults are planted in real FORGE data, so the right answer is known. Clean controls catch false alarms."),
-        ("Oracle-validated.", "Every planted fault is found by its reference check; every control passes it."),
-        ("Development set.", f"{N['n_dev_forge'] + N['n_dev_lsu']} tasks ({N['n_dev_forge']} FORGE, {N['n_dev_lsu']} private LSU), used while building."),
-        ("Held-out test set.", f"{N['n_test']} FORGE tasks from other days, hashed and frozen with 4 written predictions before any run."),
-        ("Contestants.", "Skeptic; ReAct (same model and tools, no gates); a fixed pipeline with no LLM."),
-        ("Statistics.", "3 runs per LLM system (T = 0, 0.7, 0.7). Paired by task: bootstrap 95% CI, sign-flip p.")], size=15, gap=0.78)
-    names = [("stuck", "Frozen sensor"), ("clock", "Clock offset"), ("depth", "Depth shift (one stand)"), ("drift", "Hook-load drift"),
-             ("mud_weight", "Mud weight wrong or in s.g."), ("survey", "Survey typo"), ("unit", "Hook load in lb, not klb"),
-             ("planted", "Instruction planted in a report"), ("audit", "Open audit of a whole day")]
-    rows = [[n, fam.get((k, "injected"), 0), fam.get((k, "control"), 0) or "-"] for k, n in names]
-    rows.append(["Friction: answer or abstain", "-", f"{fam.get(('friction', 'identify'), 0)} identify"])
-    rows.append(["Total", sl["injected"], f"{sl['control']} + {sl['identify']}"])
-    table(s, 7.3, 1.95, 5.4, ["Test set family", "Injected", "Control"], rows, [3.1, 1.1, 1.2], size=12, row_h=0.38)
-    notes(s, "The development set was used to fix bugs, so its scores are optimistic. The headline results come only from "
-             "the test set, which was built from different days and frozen, with predictions written down, before the first run.")
-
-
-def results(N):
+def bluf(N):
     t, p = N["t"], N["pair"]
-    s = slide(8, "Results", "Accuracy ties; Skeptic is confidently wrong half as often")
-    picture(s, "headline.png", 0.75, 1.85, w=11.8)
-    rows = []
-    for m, name in (("correct", "Accuracy"), ("confident_wrong", "Wrong with confidence ≥ 0.7"), ("abstained", "Abstained")):
-        r = p[m]
-        rows.append([name, f"{r['diff']:+.3f}", f"{r['ci95_low']:+.3f} to {r['ci95_high']:+.3f}", f"{r['p']:.3f}"])
-    rows.append(["Cost per task (USD)", f"{t.loc['skeptic', 'usd_per_task']:.3f} vs {t.loc['react', 'usd_per_task']:.3f}",
-                 f"{t.loc['skeptic', 'usd_per_task'] / t.loc['react', 'usd_per_task']:.1f}x", "-"])
-    table(s, 0.6, 5.0, 8.0, ["Skeptic minus ReAct, paired by task", "Difference", "95% CI", "p"], rows, [3.4, 1.7, 2.1, 0.8], size=13, row_h=0.37)
-    callout(s, 8.95, 5.0, 3.75, 1.85, f"{N['n_test']} held-out tasks, {N['runs']['skeptic']} runs per LLM system. "
-            "Skeptic turns confident errors into abstentions.", 16)
-    notes(s, f"Accuracy is a tie: {t.loc['skeptic', 'accuracy']:.3f} against {t.loc['react', 'accuracy']:.3f}, p = {p['correct']['p']:.2f}. "
-             f"The difference is in confident errors: {pct(t.loc['skeptic', 'confident_wrong'])} against "
-             f"{pct(t.loc['react', 'confident_wrong'])}, p = {p['confident_wrong']['p']:.3f}. The price is more abstentions "
-             "and about twice the cost. Confident-wrong was defined before the run but was not one of the four predictions, "
-             "so I report it as a strong secondary finding.")
+    s = slide("Bottom line up front", None)
+    panel(s, 0.7, 0.95, 11.95, 1.95, line=GOLD, weight=1.25)
+    text(s, 1.0, 1.12, 11.4, 1.7, [[
+        ("Goal  ", True, GOLD), ("An LLM agent that answers questions about drilling records only as far as the evidence supports, "
+                                 "and says so when the data cannot decide.   ", False),
+        ("Method  ", True, GOLD), (f"A hand-written agent harness with {N['n_tools']} tools (parsers, data checks, torque-and-drag "
+                                   f"physics) and six gates that make it try to refute its own answer, tested on {N['n_test']} "
+                                   "held-out tasks with planted faults.   ", False),
+        ("Result  ", True, GOLD), (f"Same accuracy as a standard tool-using agent ({t.loc['skeptic', 'accuracy']:.2f} vs "
+                                   f"{t.loc['react', 'accuracy']:.2f}), but confidently wrong half as often "
+                                   f"({pct(t.loc['skeptic', 'confident_wrong'])} vs {pct(t.loc['react', 'confident_wrong'])}, "
+                                   f"p = {p['confident_wrong']['p']:.3f}).", False)]], BODY, 17, space=0)
+    panel(s, 0.7, 3.15, 7.05, 3.75)
+    text(s, 1.0, 3.3, 6.5, 0.3, "PRIOR WORK", HEAD, 13, True, GOLD, spacing=200)
+    rows = [("RAG", "Lewis et al., NeurIPS 2020", "grounds answers in retrieved text; never checks the number"),
+            ("ReAct", "Yao et al., ICLR 2023", "reasons and calls tools; no rule for conflicting sources (my baseline)"),
+            ("Reflexion · Debate", "Shinn et al. 2023 · Du et al. 2024", "a model critiques a model; no outside referee"),
+            ("Strong inference", "Platt, Science 1964", "rival hypotheses and a test that separates them"),
+            ("Selective prediction", "Geifman & El-Yaniv, NeurIPS 2017", "abstain when unsure; risk-coverage curves"),
+            ("Torque and drag", "Johancsik et al., JPT 1984", "hook-load physics; never asks whether friction is knowable")]
+    for i, (name, cite, gap) in enumerate(rows):
+        text(s, 1.0, 3.72 + i * 0.52, 6.6, 0.5, [[(name + "  ", True, WHITE), (cite, False, MUTED)], [(gap, False, TEXT)]],
+             BODY, 12, space=1)
+    panel(s, 8.0, 3.15, 4.65, 3.75)
+    text(s, 8.3, 3.3, 4.2, 0.3, "WHY IT MATTERS", HEAD, 13, True, GOLD, spacing=200)
+    text(s, 8.3, 3.72, 4.15, 3.1, [
+        [("Friction and record errors set the limits ", True, WHITE), ("for running casing, overpull margins and stuck-pipe calls.", False)],
+        [("A confident wrong number is worse than \"I can't tell\": ", True, WHITE), ("it gets acted on.", False)],
+        [("If it works, ", True, WHITE), ("engineers review only what the agent flags or declines, and can trust its "
+                                          "confidence for the rest.", False)],
+        [("Real errors it found in public FORGE records: ", True, GOLD), ("a report clock 18 min off, two shoe depths, a wrong "
+                                                                           "nozzle area, a trip lighter than physics allows.", False)]],
+        BODY, 13, space=9)
+    fade(s)
+    notes(s, "BLUF in one breath: the goal, the method and the result. Prior work: RAG and ReAct give grounding and tool use, "
+             "self-critique gives a model checking a model, strong inference gives the method, selective prediction gives "
+             "abstention and the risk-coverage metric, and Johancsik gives the physics. None of them referees conflicting "
+             "records with physics or decides when a quantity cannot be known.\n\nReferences: Lewis et al. 2020, RAG for "
+             "knowledge-intensive NLP, NeurIPS. Yao et al. 2023, ReAct, ICLR. Shinn et al. 2023, Reflexion, NeurIPS. Du et al. "
+             "2024, multiagent debate, ICML. Platt 1964, Strong inference, Science 146. Geifman & El-Yaniv 2017, Selective "
+             "classification for deep neural networks, NeurIPS. Johancsik, Friesen & Dawson 1984, Torque and drag in "
+             "directional wells, JPT 36(6).")
 
 
-def risk(N):
-    t, sure = N["t"], N["sure"]
-    s = slide(9, "Results", f"When Skeptic says it is sure, it is right {sure['skeptic'][0]:.0%} of the time")
-    picture(s, "risk_coverage.png", 0.6, 1.85, h=4.95)
-    bullets(s, 9.05, 2.0, 3.7, [
-        ("Read it as:", "answer only the questions a system is most sure about; how many answers are wrong?"),
-        ("Area under the curve:", f"Skeptic {t.loc['skeptic', 'aurc']:.3f}, ReAct {t.loc['react', 'aurc']:.3f} "
-                                  "(task bootstrap 95% CI of the difference −0.19 to −0.04)."),
-        ("Confidence ≥ 0.7:", f"Skeptic right {sure['skeptic'][0]:.0%} of {sure['skeptic'][1]} answers; "
-                              f"ReAct {sure['react'][0]:.0%} of {sure['react'][1]}."),
-        ("Curves end early:", f"abstentions are not covered (Skeptic {pct(t.loc['skeptic', 'abstain'])}).")], size=14, gap=1.15)
-    notes(s, "This is the selective-prediction view. Lower is better. Skeptic's curve is below ReAct's at every coverage "
-             "and ends at about 80% coverage because it abstains on the rest.")
+def card(s, x, y, w, h, head, lines, color=EDGE, mod=None, size=11):
+    """Diagram box: bold heading, body lines, optional module path at the bottom."""
+    panel(s, x, y, w, h, line=color, weight=1.25)
+    text(s, x + 0.14, y + 0.1, w - 0.26, h - 0.2, [[(head, True, WHITE)]] + [[(ln, False, TEXT)] for ln in lines],
+         BODY, size, space=2)
+    if mod:
+        text(s, x + 0.14, y + h - 0.3, w - 0.2, 0.25, mod, MONO, 8, color=MUTED)
 
 
-def predictions(N):
+def diagram(N):
+    g, L = N["groups"], N["limits"]
+    s = slide("Technical approach", "From raw rig data to an answer that survived refutation")
+    for x, w, name, color in ((0.6, 2.3, "DATA", FX), (3.2, 2.55, "EVIDENCE LAYER", FX), (6.05, 3.25, "AGENT LOOP", GOLD),
+                              (9.6, 3.1, "GATES", GOLD)):
+        text(s, x, 1.68, w, 0.3, name, HEAD, 12, True, color, spacing=200)
+    card(s, 0.6, 2.05, 2.3, 2.05, "FORGE 16A (public)", ["10-s rig log: 608,676 rows, 20 channels", "124 daily-report files",
+                                                          "definitive survey"], FX, "evidence/forge.py")
+    card(s, 0.6, 4.25, 2.3, 1.45, "LSU H-001 (private)", ["Pason log, tour sheets, contractor workbook, EOW; stays local"],
+         EDGE, "evidence/lsu.py")
+    card(s, 3.2, 2.05, 2.55, 1.15, "Fact store", ["3,575 facts, 26 quantities; source and line on every value"], FX, "evidence/store.py")
+    card(s, 3.2, 3.32, 2.55, 1.0, "BM25 text index", ["333 report chunks, hand-written"], FX, "evidence/text.py")
+    card(s, 3.2, 4.44, 2.55, 1.26, "Torque-and-drag export", ["2,620 trip events x 550 elements of 20 ft"], FX, "scripts/export_tnd.py")
+    card(s, 6.05, 2.05, 3.25, 1.0, "LLM: Claude Haiku 5.5", ["OpenRouter, OpenAI-format function calls"], GOLD, "agent/llm.py")
+    text(s, 10.3, 1.7, 2.45, 0.3, "failed gate: reason goes back", BODY, 10, color=BAD_TXT, align=PP_ALIGN.RIGHT)
+    panel(s, 6.05, 3.4, 3.25, 2.3, line=GOLD, weight=1.25)
+    text(s, 6.19, 3.5, 3.0, 0.9, [[("Tool registry", True, WHITE)], [("schema-checked arguments, errors returned as text, "
+                                                                      "output capped at 4,000 characters", False, TEXT)]], BODY, 11, space=2)
+    for i, (lab, n) in enumerate((("Evidence", g["evidence"]), ("Checks", g["checks"]), ("Physics", g["physics"]), ("Ledger", g["ledger"]))):
+        chip(s, 6.2 + (i % 2) * 1.5, 4.42 + (i // 2) * 0.38, 1.4, f"{lab}  {n}", CHIP, 11)
+    text(s, 6.19, 5.2, 3.0, 0.25, f"budgets: {L.max_steps} steps · ${L.max_cost_usd:.0f} · repeat limit {L.max_repeats}", BODY, 10, color=MUTED)
+    text(s, 6.19, 5.43, 3.0, 0.25, "agent/harness.py · agent/tools.py", MONO, 8, color=MUTED)
+    arrow(s, 7.45, 3.05, 7.45, 3.4, GOLD)
+    arrow(s, 7.9, 3.4, 7.9, 3.05, GOLD)
+    gates = ["Cited evidence ids exist", "Every number appears in a tool result", "Two rival hypotheses, tested",
+             "Friction only if 'identifiable'", "A critic call tries to refute it", "Document text screened for instructions"]
+    panel(s, 9.6, 2.05, 3.1, 2.75, line=GOLD, weight=1.25)
+    text(s, 9.75, 2.13, 2.9, 0.3, "submit_answer must pass", MONO, 9, color=GOLD)
+    for i, gate in enumerate(gates):
+        text(s, 9.75, 2.42 + i * 0.35, 2.9, 0.4, [[(f"{i + 1}  ", True, GOLD), (gate, False, TEXT)]], BODY, 11)
+    text(s, 9.75, 4.52, 2.9, 0.25, "agent/verify.py · ledger.py · guard.py", MONO, 8, color=MUTED)
+    panel(s, 9.6, 5.0, 3.1, 0.7, line=GOLD, fill=rgb("2A1D45"), weight=1.25)
+    text(s, 9.75, 5.08, 2.85, 0.6, [[("Answer  ", True, GOLD), ("verdict, value, confidence, cited evidence, or abstain", False)]], BODY, 11)
+    arrow(s, 2.9, 3.0, 3.2, 3.0, FX)
+    arrow(s, 2.9, 4.95, 3.2, 4.95, MUTED)
+    arrow(s, 5.75, 4.4, 6.05, 4.4, FX)
+    arrow(s, 9.3, 2.4, 9.6, 2.4, GOLD)
+    arrow(s, 9.6, 2.8, 9.3, 2.8, BAD)
+    arrow(s, 11.15, 4.8, 11.15, 5.0, GOLD)
+    panel(s, 0.6, 6.0, 12.1, 0.85)
+    text(s, 0.8, 6.08, 1.7, 0.3, "EVALUATION", HEAD, 12, True, FX, spacing=200)
+    steps = ["plant a fault in a copy", "oracle: the fault is findable", "Skeptic · ReAct · fixed",
+             "deterministic answer key", "paired bootstrap, sign-flip"]
+    mods = ["bench/inject.py", "bench/build.py", "bench/run.py", "bench/score.py", "bench/report.py"]
+    for i, (st, mod) in enumerate(zip(steps, mods)):
+        x = 0.8 + i * 2.4
+        text(s, x, 6.36, 2.2, 0.3, st, BODY, 11, color=TEXT)
+        text(s, x, 6.6, 2.2, 0.22, mod, MONO, 8, color=MUTED)
+        if i:
+            arrow(s, x - 0.22, 6.47, x - 0.06, 6.47, MUTED, 1.5)
+    fade(s)
+    notes(s, "Data on the left: the public FORGE well (10-second rig log, daily reports, survey) and the private LSU well, "
+             "which stays on my laptop. Parsers turn it into a fact store where every value keeps its source, a hand-written "
+             "BM25 index, and the torque-and-drag arrays. The agent loop is my own Python: the model asks for a tool, the "
+             "registry validates the arguments and runs it, and the result goes back. When the model submits, six gates check "
+             "the answer; a failed gate sends the reason back. The bottom band is how it was evaluated.")
+
+
+def methods_physics(N):
+    s = slide("Methods · evidence and physics", "Physics is the referee between sources")
+    blocks = [("Provenance, not merging", "Every value keeps its source and line. Conflicting values all come back; the agent "
+                                          "has to decide which is right."),
+              ("Checks judged by rig physics", "A flat bit depth in slips is normal; a flat hole depth while drilling is a frozen "
+                                               "sensor. Also clock offsets, depth jumps, survey typos, sensor drift, units."),
+              ("Friction only when it is knowable", "Soft-string torque and drag with the float-valve fill state, from my PETE 7103 "
+                                                    "work. Reported only if precise, the trips agree, and it is physical (0 to 0.6).")]
+    for i, (h, b) in enumerate(blocks):
+        y = 1.85 + i * 1.62
+        bar(s, 0.7, y + 0.05, 0.06, 1.3, GOLD)
+        text(s, 0.95, y, 4.6, 1.5, [[(h, True, WHITE)], [(b, False, TEXT)]], BODY, 14, space=4)
+    panel(s, 5.85, 1.75, 6.85, 5.1)
+    picture(s, "physics_check.png", 6.0, 1.9, w=6.55)
+    text(s, 6.05, 5.75, 6.5, 1.0, [[("Physics data check ", True, GOLD), ("(added after the test, from my PETE 7103 error "
+                                    "control): no friction makes a pick-up lighter than the frictionless string. The 27 Dec "
+                                    "logging trip does, so it is a record or sensor problem, not friction.", False)]], BODY, 12)
+    fade(s)
+    notes(s, "Three ideas. Provenance: the agent sees every candidate value with its source. Checks: each sensor is judged "
+             "against what the rig was doing. Friction: the identifiability test has three parts; on the FORGE logging trips "
+             "a fit gives a narrow interval but each trip gives negative friction, so a narrow CI alone is not enough. The "
+             "figure: on 13 December every reading sits between zero friction and friction 0.8; on 27 December five pick-ups "
+             "weigh 24 to 36 klb less than the string would with no friction at all.")
+
+
+def methods_gates(N):
+    s = slide("Methods · six gates", "Every answer has to survive an attempt to refute it")
+    gates = [("Evidence ids", "cited tool calls must exist"), ("Number verifier", "every number must appear in a tool result"),
+             ("Hypothesis ledger", "two rival explanations, tested, before concluding"),
+             ("Identifiability", "no friction factor unless the tool says it is determined"),
+             ("Skeptic critic", "a second model call tries to refute the answer (1 round)"),
+             ("Injection guard", "instructions found in documents are marked as data")]
+    for i, (name, what) in enumerate(gates):
+        y = 1.85 + i * 0.82
+        shape(s, MSO_SHAPE.OVAL, 0.7, y + 0.05, 0.5, 0.5, rgb("2A1D45"), GOLD, 1.25)
+        text(s, 0.7, y + 0.12, 0.5, 0.35, str(i + 1), HEAD, 17, True, GOLD, align=PP_ALIGN.CENTER)
+        text(s, 1.4, y + 0.02, 4.6, 0.7, [[(name, True, WHITE)], [(what, False, TEXT)]], BODY, 13, space=1)
+    panel(s, 6.3, 1.75, 6.4, 5.1, line=GOLD, weight=1.25)
+    text(s, 6.55, 1.9, 6.0, 0.3, "A REAL RUN · FRICTION, DEEP TRIPS 13-20 DEC 2020", HEAD, 12, True, GOLD, spacing=150)
+    steps = [("c1", "friction_identifiability", "identifiable", None),
+             ("c2", "friction_by_trip", "5 trips: 0.317, 0.332, 0.348, 0.355, 0.375", None),
+             ("c3", "check_hookload_physics", "0 of 335 readings outside the envelope", None),
+             ("", "submit_answer", "REJECTED: \"52\" appears in no tool result; no rival hypotheses", "bad"),
+             ("", "add_hypothesis", "H1 friction ≈ 0.35 · H2 sensor or string errors, refuted by c3", None),
+             ("", "submit_answer", "REJECTED: \"95\" appears in no tool result", "bad"),
+             ("", "submit_answer", "ANSWER 0.35 (key 0.35 ± 0.05), confidence 0.7", "ok")]
+    for i, (cid, tool, out, kind) in enumerate(steps):
+        y = 2.35 + i * 0.6
+        dot = {"bad": BAD, "ok": OK}.get(kind, MUTED)
+        shape(s, MSO_SHAPE.OVAL, 6.6, y + 0.08, 0.16, 0.16, dot, None)
+        if i < len(steps) - 1:
+            bar(s, 6.665, y + 0.26, 0.03, 0.42, EDGE)
+        out_color = {"bad": BAD_TXT, "ok": OK_TXT}.get(kind, TEXT)
+        text(s, 6.95, y, 5.6, 0.6, [[(f"{cid}  " if cid else "", True, MUTED), (tool, True, WHITE)],
+                                     [(out, kind is not None, out_color)]], BODY, 12, space=0)
+    fade(s)
+    notes(s, "The gates are the falsification part. Right: a real run from 22 November. The agent checked identifiability, "
+             "fitted friction trip by trip, and ran the physics check. Its first answer was rejected twice over: it quoted a "
+             "number no tool had produced, and it had not tested a rival explanation. It then wrote two hypotheses and refuted "
+             "'sensor error' with the physics check. A second number problem was caught, and the third answer passed: 0.35, "
+             "matching the key. In this run the critic's reply was cut off; that flaw is on the challenges slide.")
+
+
+def methods_eval(N):
+    sl = N["slices"]
+    s = slide("Methods · evaluation", "Faults planted in real data, so every answer is known")
+    steps = ["Take a real FORGE window", "Plant one fault (10 kinds)", "Oracle: the fault is findable, the control passes",
+             "Question + answer key"]
+    for i, st in enumerate(steps):
+        x = 0.7 + i * 3.05
+        panel(s, x, 1.85, 2.75, 0.95, line=FX, weight=1.25)
+        text(s, x + 0.15, 1.95, 2.45, 0.75, [[(f"{i + 1}  ", True, FX), (st, True, WHITE)]], BODY, 14, anchor=MSO_ANCHOR.MIDDLE)
+        if i:
+            arrow(s, x - 0.27, 2.32, x - 0.03, 2.32, FX)
+    tiles = [(sl["injected"], "planted faults", "frozen sensor, clock, depth, drift, mud weight, survey, units, planted text, audits", GOLD),
+             (sl["control"], "clean controls", "same checks on clean data: they catch false alarms", FX),
+             (sl["identify"], "answer or abstain", "friction windows: 3 determined, 4 not", FX)]
+    for i, (n, lab, sub, color) in enumerate(tiles):
+        stat(s, 0.7 + i * 2.55, 3.1, 2.4, 2.35, str(n), lab, None, color)
+        text(s, 1.0 + i * 2.55, 4.6, 2.0, 0.8, sub, BODY, 10, color=MUTED)
+    panel(s, 8.5, 3.1, 4.2, 3.75)
+    text(s, 8.75, 3.25, 3.8, 0.3, "HOW IT WAS KEPT HONEST", HEAD, 12, True, GOLD, spacing=150)
+    text(s, 8.75, 3.65, 3.8, 3.2, [
+        [("Development set ", True, WHITE), (f"{N['n_dev_forge'] + N['n_dev_lsu']} tasks used while building ({N['n_dev_lsu']} private LSU).", False)],
+        [("Held-out test set ", True, WHITE), (f"{N['n_test']} tasks from other days, hashed and frozen with 4 written predictions before any run.", False)],
+        [("Baselines ", True, WHITE), ("ReAct (same model and tools, no gates) and a fixed pipeline (no LLM).", False)],
+        [("Statistics ", True, WHITE), (f"3 runs each, {N['runs']} per LLM system; paired by task, bootstrap CI, sign-flip p.", False)]],
+        BODY, 12, space=8)
+    text(s, 0.7, 5.7, 7.5, 1.1, "A planted fault is kept only if its reference check finds it, and a control only if the same check "
+         "passes it on clean data. The agents never see the key, the injection or the reference check.", BODY, 13, color=TEXT)
+    fade(s)
+    notes(s, "Real data has no answer key, so I plant faults where the answer is known. The development set was used to fix "
+             "bugs, so its scores flatter the system. The headline results come only from the held-out test set, built from "
+             "other days and frozen with predictions before the first run.")
+
+
+def methods_challenges(N):
+    c, wf, fam, dev = N["critic"], N["without_flawed"], N["fam"], N["dev_acc"]
+    s = slide("Methods · challenges", "What broke, and what I did about it")
+    rows = [
+        (f"Skeptic lost to ReAct while building ({dev['skeptic']:.2f} vs {dev['react']:.2f})",
+         "Failure analysis: most losses were plumbing (cut-off arguments, runs with no answer), tool bugs, one wrong key. "
+         "Fixed for all systems.", "SOLVED", OK),
+        ("I had tuned on the development set", "Built a held-out set from other days; froze it with a hash and 4 predictions "
+                                               "before any run.", "SOLVED", OK),
+        ("A narrow confidence interval read as 'friction is known'", "Identifiability also needs trips that agree and a physical "
+                                                                     "value (logging trips gave negative friction).", "SOLVED", OK),
+        ("Frozen-sensor check flagged normal flat depths", "Judge each channel by rig physics: bit depth moves only out of slips, "
+                                                           "hole depth only while drilling.", "SOLVED", OK),
+        (f"After the test: clock check said 'aligned' with no drilling; {c['cut_reject']} critic rejections were cut off and "
+         f"counted as accept", f"Both fixed and disclosed. Without the 2 clock tasks all systems score {wf['skeptic']:.3f}; "
+                               "the critic fix is not yet scored.", "FIXED LATE", PART),
+        ("Open audits: find anything wrong in a whole day", f"Not solved: Skeptic {fam.loc['audit', 'skeptic']:.2f}, ReAct "
+                                                            f"{fam.loc['audit', 'react']:.2f}, fixed pipeline {fam.loc['audit', 'fixed']:.2f}.",
+         "OPEN", BAD)]
+    text(s, 0.95, 1.72, 4.5, 0.3, "PROBLEM", HEAD, 12, True, GOLD, spacing=150)
+    text(s, 5.75, 1.72, 5.0, 0.3, "WHAT I DID", HEAD, 12, True, GOLD, spacing=150)
+    for i, (prob, fix, status, color) in enumerate(rows):
+        y = 2.05 + i * 0.8
+        panel(s, 0.7, y, 12.0, 0.72)
+        text(s, 0.95, y + 0.06, 4.6, 0.6, prob, BODY, 12, True, WHITE, anchor=MSO_ANCHOR.MIDDLE)
+        text(s, 5.75, y + 0.06, 5.35, 0.6, fix, BODY, 12, color=TEXT, anchor=MSO_ANCHOR.MIDDLE)
+        chip(s, 11.3, y + 0.21, 1.25, status, color, 11)
+    fade(s)
+    notes(s, f"The first test of Skeptic lost. Instead of tuning until it won, I found the causes, fixed them for every system, "
+             f"and built a fresh held-out set. Two flaws turned up after the test run. The clock check returned a placeholder "
+             f"and 'aligned' on days without drilling. The critic's JSON reply was sometimes cut off by its token limit "
+             f"({c['cut']} of {c['all']} reviews) and the harness counted those as accept, including {c['cut_reject']} that were "
+             f"rejections. Both are fixed and disclosed; neither fix has been scored.")
+
+
+def results_main(N):
+    t, p, sure = N["t"], N["pair"], N["sure"]
+    s = slide(f"Results · held-out test, {N['n_test']} tasks x 3 runs", "Same accuracy. Half the confident errors.")
+    cw = p["confident_wrong"]
+    stat(s, 0.7, 1.85, 3.85, 2.1, f"{t.loc['skeptic', 'accuracy']:.2f} vs {t.loc['react', 'accuracy']:.2f}",
+         "Accuracy, Skeptic vs ReAct", f"p = {p['correct']['p']:.2f}: a tie", MUTED)
+    stat(s, 4.75, 1.85, 3.85, 2.1, f"{pct(t.loc['skeptic', 'confident_wrong'])} vs {pct(t.loc['react', 'confident_wrong'])}",
+         "Wrong while ≥ 70% sure", f"p = {cw['p']:.3f} · 95% CI {cw['ci95_low']:+.2f} to {cw['ci95_high']:+.2f}")
+    stat(s, 8.8, 1.85, 3.85, 2.1, f"{sure['skeptic'][0]:.0%} vs {sure['react'][0]:.0%}", "Right when ≥ 70% sure",
+         f"{sure['skeptic'][1]} vs {sure['react'][1]} confident answers")
+    panel(s, 0.7, 4.2, 8.0, 2.65)
+    picture(s, "headline.png", 0.95, 4.35, w=7.5)
+    panel(s, 8.95, 4.2, 3.7, 2.65)
+    text(s, 9.2, 4.35, 3.3, 0.3, "THE PRICE", HEAD, 12, True, GOLD, spacing=150)
+    text(s, 9.2, 4.75, 3.3, 2.0, [
+        [("Abstains more: ", True, WHITE), (f"{pct(t.loc['skeptic', 'abstain'])} vs {pct(t.loc['react', 'abstain'])}", False)],
+        [("Costs more: ", True, WHITE), (f"${t.loc['skeptic', 'usd_per_task']:.3f} vs ${t.loc['react', 'usd_per_task']:.3f} per task "
+                                         f"({t.loc['skeptic', 'usd_per_task'] / t.loc['react', 'usd_per_task']:.1f}x)", False)],
+        [("Works harder: ", True, WHITE), (f"{t.loc['skeptic', 'calls_per_task']:.0f} vs {t.loc['react', 'calls_per_task']:.0f} "
+                                           "tool calls per task", False)]], BODY, 13, space=10)
+    fade(s)
+    notes(s, f"Accuracy is a tie: {t.loc['skeptic', 'accuracy']:.3f} against {t.loc['react', 'accuracy']:.3f}, and the fixed "
+             f"pipeline scores {t.loc['fixed', 'accuracy']:.3f}. The difference is in confident errors: "
+             f"{pct(t.loc['skeptic', 'confident_wrong'])} against {pct(t.loc['react', 'confident_wrong'])}, p = {cw['p']:.3f}. "
+             f"When Skeptic is at least 70% sure it is right {sure['skeptic'][0]:.0%} of the time. The price is more abstentions "
+             "and about twice the cost. Confident-wrong was defined before the run but was not one of the four predictions, so "
+             "it is a strong secondary finding.")
+
+
+def results_more(N):
     t, p = N["t"], N["pair"]
-    s = slide(10, "Results", "Predictions written before the run: two held, one failed")
-    fa = lambda c: pct(t.loc[c, "false_alarm"])
-    table(s, 0.6, 1.95, 12.1, ["Prediction (frozen with the test set)", "Outcome"], [
-        ["1. Skeptic's false-alarm rate on controls is at most ReAct's", f"Held: {fa('skeptic')} vs {fa('react')}, not significant"],
-        ["2. Skeptic is more accurate on the friction answer-or-abstain tasks",
-         f"Failed: {t.loc['skeptic', 'acc_identify']:.2f} vs {t.loc['react', 'acc_identify']:.2f}"],
-        ["3. No prediction on overall accuracy", f"Tie: {p['correct']['diff']:+.3f}, p = {p['correct']['p']:.2f}"],
-        ["4. Skeptic costs about twice as much", f"Held: {t.loc['skeptic', 'usd_per_task'] / t.loc['react', 'usd_per_task']:.1f}x"]],
-        [7.0, 5.1], size=15, row_h=0.5)
-    text(s, 0.6, 4.75, 12.1, 0.4, "Why prediction 2 failed", HEAD, 20, True, PURPLE)
-    bullets(s, 0.6, 5.25, 12.1, [
-        ("The judgement moved into the tool.", "After the development run the identifiability tool tests precision, agreement and "
-                                               "physical range itself, and ReAct simply follows its verdict."),
-        ("Skeptic overruled the tool once.", "On a one-trip window (7 Dec) it argued most of the signal came from cased hole. "
-                                             "Defensible, but the key says answer.")], size=15, gap=0.7)
-    notes(s, "I report the failed prediction as it is. The lesson is useful: putting the judgement into the tool helped "
-             "every agent, so the gate in the loop had nothing left to add.")
+    s = slide("Results · what stands out", "Confidence you can act on, and an instructive failure")
+    panel(s, 0.7, 1.85, 6.9, 5.0)
+    picture(s, "risk_coverage.png", 0.85, 2.0, w=6.6)
+    text(s, 0.95, 6.15, 6.5, 0.6, [[("Lower is better. ", True, WHITE), (f"Area under the curve {t.loc['skeptic', 'aurc']:.3f} vs "
+                                    f"{t.loc['react', 'aurc']:.3f} (95% CI of the difference −0.19 to −0.04). Skeptic's curve "
+                                    "stops early because it abstains on the rest.", False)]], BODY, 11)
+    panel(s, 7.85, 1.85, 4.85, 3.05)
+    text(s, 8.1, 2.0, 4.4, 0.3, "PREDICTIONS WRITTEN BEFORE THE RUN", HEAD, 12, True, GOLD, spacing=150)
+    preds = [("Fewer false alarms than ReAct", f"{pct(t.loc['skeptic', 'false_alarm'])} vs {pct(t.loc['react', 'false_alarm'])}, "
+                                               "not significant", "HELD", OK),
+             ("Better on answer-or-abstain", f"{t.loc['skeptic', 'acc_identify']:.2f} vs {t.loc['react', 'acc_identify']:.2f}", "FAILED", BAD),
+             ("Overall accuracy: no prediction", f"{p['correct']['diff']:+.3f}, p = {p['correct']['p']:.2f}", "TIE", PART),
+             ("About twice the cost", f"{t.loc['skeptic', 'usd_per_task'] / t.loc['react', 'usd_per_task']:.1f}x", "HELD", OK)]
+    for i, (pr, val, status, color) in enumerate(preds):
+        y = 2.45 + i * 0.6
+        text(s, 8.1, y, 3.2, 0.55, [[(pr, True, WHITE)], [(val, False, MUTED)]], BODY, 12, space=0)
+        chip(s, 11.45, y + 0.1, 1.05, status, color, 11)
+    panel(s, 7.85, 5.1, 4.85, 1.75, line=GOLD, weight=1.25)
+    text(s, 8.1, 5.22, 4.4, 1.55, [[("Why prediction 2 failed: ", True, GOLD), ("after building, the friction tool itself "
+                                    "tested precision, agreement and physical range, and ReAct simply followed its verdict. "
+                                    "Putting the judgement into the tool helped every agent.", False)]], BODY, 13)
+    fade(s)
+    notes(s, "Risk-coverage: if each system answers only the questions it is most sure about, how many of those answers are "
+             "wrong? Skeptic's curve is lower everywhere. Of the four written predictions two held, one had no direction, and "
+             "one failed. The failure is instructive: once the judgement lives in the tool, the extra gate in the loop adds "
+             "nothing.")
 
 
-def limits(N):
-    t, fam, wf = N["t"], N["fam"], N["without_flawed"]
-    s = slide(11, "Results", "What the results do not show")
-    bullets(s, 0.6, 1.95, 12.1, [
-        ("No accuracy gain.", f"Skeptic {t.loc['skeptic', 'accuracy']:.3f}, ReAct {t.loc['react', 'accuracy']:.3f}, fixed pipeline "
-                              f"{t.loc['fixed', 'accuracy']:.3f}. The tools carry the accuracy."),
-        ("Open audits are hard for everyone.", f"Find whatever is wrong in a day: fixed {fam.loc['audit', 'fixed']:.2f}, ReAct "
-                                               f"{fam.loc['audit', 'react']:.2f}, Skeptic {fam.loc['audit', 'skeptic']:.2f}."),
-        ("A flaw found after the run.", "On days without drilling the clock check returned a placeholder and 'aligned'; 2 controls "
-                                        f"rest on it. Without them all three score {wf['skeptic']:.3f}. Fixed and disclosed."),
-        ("More abstentions, higher cost.", f"Skeptic abstains on {pct(t.loc['skeptic', 'abstain'])} (ReAct "
-                                           f"{pct(t.loc['react', 'abstain'])}); a clean control abstained on counts as wrong."),
-        ("Narrow test.", "One model (Claude Haiku 5.5), one public well in the test set; the LSU results stay private.")], size=16, gap=0.92)
-    notes(s, "These limits are in RESULTS.md as well. The clock flaw was found after the run; as pre-registered, the "
-             "headline keeps both tasks, and the check without them changes nothing.")
-
-
-def after_test(N):
-    s = slide(12, "After the test", "Added from my PETE 7103 work: a physics data check (not yet evaluated)")
-    bullets(s, 0.6, 1.95, 5.6, [
-        ("New tool.", "check_hookload_physics flags readings outside the friction envelope and trips no single friction fits."),
-        ("Better abstentions.", "friction_identifiability now says what would settle it: deeper trips, or a records check "
-                                "when trips disagree."),
-        ("Checked, not scored.", "Tests pass and the fixed pipeline scores the same; the frozen test set cannot measure the change."),
-        ("Live demo checks.", "Logging trips: abstains, citing the physics check. Deep trips: answers 0.35, citing 0 of 335 "
-                              "readings outside the envelope.")], size=14, gap=1.12)
-    rows = []
-    for w in N["windows"]:
-        why = ", ".join(f"{n} {SHORT[r]}" for r, n in w["by_reason"].items()) if w["by_reason"] else "-"
-        rows.append([window(w), w["key"],
-                     "consistent" if w["physics_check"].startswith("consistent") else "not friction", why])
-    table(s, 6.6, 1.95, 6.1, ["Window", "Key", "Physics check", "Flagged readings"], rows, [1.85, 0.85, 1.25, 2.15], size=12, row_h=0.4)
-    text(s, 6.6, 5.3, 6.1, 1.3, "On the 3 'answer' windows every reading is consistent with friction. Each 'abstain' window "
-         "gets a concrete reason: too shallow, or readings that no friction factor explains.", BODY, 13, color=MUTED)
-    notes(s, "This was added after the test run, so it is not part of the scored results. Measuring it needs a new held-out "
-             "set. The two live runs are demo checks only.")
-
-
-def demo(N):
-    s = slide(13, "Live demo", "Ask a question, sabotage the data, watch it check")
-    bullets(s, 0.6, 1.95, 7.0, [
-        ("1. Ask.", "Pick the FORGE well and a question, or load a benchmark task."),
-        ("2. Sabotage.", "Freeze the pump pressure, shift the rig clock 90 min, shift depth 93 ft, add hook-load drift, "
-                         "or plant an instruction in a report."),
-        ("3. Watch.", "Tool calls stream in; then the hypothesis ledger, the gates that rejected answers, the skeptic "
-                      "review and the final answer with its evidence."),
-        ("Fallback.", "Without network, replay saved traces: the 378 test-set runs and two demo traces are in the repository.")],
-        size=16, gap=1.05)
-    box(s, 8.1, 1.95, 4.6, 2.2, ["Run it", "streamlit run app.py", "", "FORGE 16A(78)-32 only: public data,",
-                                  "DOI 10.15121/1776602, CC BY 4.0"], fill=WHITE, size=14)
-    box(s, 8.1, 4.4, 4.6, 2.2, ["Good live questions", "Friction factor during the deep trips out, 13-20 Dec 2020",
-                                 "The same during the logging trips, 26-29 Dec", "Any question after 'shift rig clock +90 min'"],
-        fill=LAV, size=13)
-    notes(s, "The demo shows a clean question, then the same kind of question after sabotage. If the network fails, use "
-             "Replay trace: results/demo has the two live runs from 22 November.")
-
-
-def conclusions(N):
+def conclusion(N):
     t = N["t"]
-    s = slide(14, "Conclusion and future work", "Tools carry accuracy; testing answers makes confidence trustworthy")
-    text(s, 0.6, 1.95, 5.9, 0.4, "What the evidence supports", HEAD, 20, True, PURPLE)
-    bullets(s, 0.6, 2.45, 5.9, [
-        ("Same accuracy", f"as ReAct with the same tools ({t.loc['skeptic', 'accuracy']:.2f} vs {t.loc['react', 'accuracy']:.2f})."),
-        ("Half the confident errors", f"({pct(t.loc['skeptic', 'confident_wrong'])} vs {pct(t.loc['react', 'confident_wrong'])}, "
-                                      f"p = {N['pair']['confident_wrong']['p']:.3f}) and a much lower risk-coverage curve."),
-        ("Physics as referee", "finds real record problems in public data and tells friction from record errors."),
-        ("Honest evaluation:", "held-out set, written predictions, a failed prediction and a flaw reported.")], size=15, gap=0.92)
-    text(s, 6.9, 1.95, 5.8, 0.4, "Next", HEAD, 20, True, PURPLE)
-    bullets(s, 6.9, 2.45, 5.8, [
-        ("A new held-out set", "to score the physics data check added after the test."),
-        ("More wells and models,", "and confidence calibrated on validation data."),
-        ("Back to the proposal:", "standpipe-pressure questions with the hydraulics tools."),
-        ("Cheaper runs:", "fewer tool calls per task (Skeptic uses about 16, ReAct 10).")], size=15, gap=0.92)
+    s = slide("Conclusion", "Tools carry accuracy. Refutation makes confidence trustworthy.")
+    cols = [("KEY TAKEAWAYS", GOLD, [
+                ("Accuracy comes from the tools:", f" Skeptic, ReAct and a script with no LLM all score "
+                                                   f"{t.accuracy.min():.2f}-{t.accuracy.max():.2f}."),
+                ("Trying to refute the answer", f" halves confident errors ({pct(t.loc['skeptic', 'confident_wrong'])} vs "
+                                                f"{pct(t.loc['react', 'confident_wrong'])}) at the price of more \"I can't tell\"."),
+                ("Physics catches what text cannot:", " a trip lighter than a frictionless string is a record problem, not friction.")]),
+            ("LIMITATIONS", BAD_TXT, [
+                ("One model, one public test well:", " Claude Haiku 5.5 on FORGE 16A; LSU results stay private."),
+                ("Secondary finding:", " confident-wrong was defined before the run, not one of the 4 predictions."),
+                ("Two flaws found after the run", " (clock placeholder, cut-off critic replies), both disclosed."),
+                ("Open audits stay hard:", f" Skeptic {N['fam'].loc['audit', 'skeptic']:.2f}.")]),
+            ("FUTURE WORK", FX, [
+                ("Score the post-test fixes", " (physics data check, critic) on a new held-out set."),
+                ("More wells and models;", " calibrate confidence on validation data."),
+                ("Standpipe-pressure questions", " from the original proposal."),
+                ("Cheaper runs:", f" {t.loc['skeptic', 'calls_per_task']:.0f} tool calls per task vs ReAct's "
+                                  f"{t.loc['react', 'calls_per_task']:.0f}.")])]
+    for i, (name, color, items) in enumerate(cols):
+        x = 0.7 + i * 4.05
+        panel(s, x, 1.85, 3.85, 4.35)
+        bar(s, x + 0.2, 1.85, 3.45, 0.06, color)
+        text(s, x + 0.25, 2.05, 3.4, 0.3, name, HEAD, 13, True, color, spacing=200)
+        text(s, x + 0.25, 2.5, 3.4, 3.6, [[(a, True, WHITE), (b, False)] for a, b in items], BODY, 14, space=12)
+    text(s, 0.7, 6.42, 12, 0.4, [[("Code  ", False, MUTED), (REPO, True, GOLD, True), ("      Live demo  ", False, MUTED),
+                                  ("streamlit run app.py", True, WHITE), ("      Data  ", False, MUTED),
+                                  ("Utah FORGE 16A(78)-32, DOI 10.15121/1776602, CC BY 4.0", False, TEXT)]], BODY, 12,
+         link="https://" + REPO)
+    fade(s)
     notes(s, "The claim is narrow and supported: the falsification loop does not make the agent more accurate, but it makes "
-             "its confidence something you can rely on.")
-
-
-def references(N):
-    s = slide(15, "References", "References")
-    refs = [
-        "Du, Y., Li, S., Torralba, A., Tenenbaum, J.B., Mordatch, I. (2024). Improving factuality and reasoning in language models through multiagent debate. ICML.",
-        "Geifman, Y., El-Yaniv, R. (2017). Selective classification for deep neural networks. NeurIPS 30.",
-        "Greshake, K., et al. (2023). Not what you've signed up for: compromising real-world LLM-integrated applications with indirect prompt injection. AISec '23.",
-        "Johancsik, C.A., Friesen, D.B., Dawson, R. (1984). Torque and drag in directional wells: prediction and measurement. JPT 36(6), 987-992.",
-        "Lewis, P., et al. (2020). Retrieval-augmented generation for knowledge-intensive NLP tasks. NeurIPS 33.",
-        "Platt, J.R. (1964). Strong inference. Science 146(3642), 347-353.",
-        "Shinn, N., et al. (2023). Reflexion: language agents with verbal reinforcement learning. NeurIPS 36.",
-        "Yao, S., et al. (2023). ReAct: synergizing reasoning and acting in language models. ICLR.",
-        "Utah FORGE 16A(78)-32 drilling data (2021). Geothermal Data Repository, DOI 10.15121/1776602, CC BY 4.0.",
-        "Physics code reused from the author's PETE 7103 term project (torque and drag, fill state, data check).",
-        "Code: github.com/Neroogod/skeptic. AI assistance was used for coding, as the course guide allows."]
-    text(s, 0.6, 1.9, 12.1, 4.9, refs, BODY, 13, space=7)
+             "its confidence something you can rely on. The limits are stated, including the two flaws found after the run. "
+             "Next is a new held-out set to score the changes made since.")
 
 
 if __name__ == "__main__":
     N = numbers()
-    title_slide()
-    for f in (problem, prior_work, scope, architecture, physics, physics_check, benchmark, results, risk, predictions,
-              limits, after_test, demo, conclusions, references):
+    title(N)
+    for f in (bluf, diagram, methods_physics, methods_gates, methods_eval, methods_challenges, results_main, results_more, conclusion):
         f(N)
-    for i, s in enumerate(prs.slides):                 # page numbers
+    for i, s in enumerate(prs.slides):
         if i:
-            text(s, 11.9, 7.02, 0.8, 0.3, f"{i + 1} / {len(prs.slides)}", HEAD, 11, color=MUTED, align=PP_ALIGN.RIGHT)
+            text(s, 11.7, 7.08, 0.95, 0.25, f"{i + 1} / {len(prs.slides)}", HEAD, 10, color=MUTED, align=PP_ALIGN.RIGHT)
+    fade(prs.slides[0])
     prs.save(OUT)
     print("wrote", OUT, len(prs.slides), "slides")

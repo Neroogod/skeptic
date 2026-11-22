@@ -174,9 +174,12 @@ The author's PETE 7103 pipeline gained a physics-based error control (P8) and a 
   disagree or give impossible values: more trips will not help, check the records with
   `check_hookload_physics`. The verdict itself is unchanged.
 - **Prompt:** two clauses in the Skeptic method point to the two outputs. ReAct gets the tool too.
+- **Critic replies (found while preparing the slides):** 33 of 188 critic reviews in the test run were cut off
+  at the token limit and counted as "accept", 10 of them visible rejections. `harness.salvage_review` now
+  keeps a visible decision and the finished objections; the critic prompt asks for at most 3 objections.
 
 Verification (no LLM runs):
-- 50 public and 7 private tests pass (57 in total), including a fresh-clone install with a FORGE-only export.
+- 51 public and 7 private tests pass (58 in total), including a fresh-clone install with a FORGE-only export.
 - All 3 "answer" windows of the test set's identify slice pass the check, and all 4 "abstain" windows
   get a concrete reason: shallow (bit below about 6,853 ft needed), or readings no friction explains
   (27 Dec logging trip lighter than the frictionless string, as PETE P8 found; 22 Dec trip out needing
@@ -194,4 +197,5 @@ frozen test set cannot measure these changes; that needs a new held-out set.
   rebuilds the RESULTS.md tables from them exactly.
 - Demo: replay works without key or network from `results/`; two live demo traces (22 Nov, $0.018, not
   results) are in `results/demo`.
-- Slides: `slides/Skeptic_CSC7700_Oghale.pptx` (and `.pdf`), every number computed from `results/`.
+- Slides: `slides/Skeptic_CSC7700_Oghale.pptx` (and `.pdf`), 10 slides in the order the course asks for, every
+  result number computed from `results/`.

@@ -20,7 +20,7 @@ CSC 7700 individual project (LSU, Fall 2026). The physics (soft-string torque an
 | `scripts/export_tnd.py` | One-off export of torque-and-drag inputs from the PETE pipeline |
 | `results/` | The held-out test-set runs (`test_set/`, FORGE only, gzipped traces), two live demo traces (`demo/`), and the physics-check outcomes on the friction windows |
 | `slides/` | The final deck (`Skeptic_CSC7700_Oghale.pptx` / `.pdf`), built by `build_figures.py` and `build_slides.py` from `results/` |
-| `tests/` | 50 tests (evidence, physics, harness, benchmark, UI); 7 more LSU tests stay local in `tests/private/` |
+| `tests/` | 51 tests (evidence, physics, harness, benchmark, UI); 7 more LSU tests stay local in `tests/private/` |
 
 ## Setup
 

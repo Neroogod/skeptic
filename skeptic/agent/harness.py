@@ -14,6 +14,7 @@ One run = one question about one well:
 Everything is written to a trace for the benchmark and the UI.
 """
 import json
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -139,11 +140,28 @@ class Context:
         try:
             return json.loads(txt[txt.index("{"):txt.rindex("}") + 1])
         except (ValueError, json.JSONDecodeError):
-            return dict(decision="accept", objections=[], parse_error=txt[:200])
+            return salvage_review(txt)
 
     def _add_usage(self, u):
         for k in self.usage:
             self.usage[k] += u.get(k, 0) or 0
+
+
+def salvage_review(txt):
+    """A critic reply cut off mid-JSON (it hit its token limit) still shows its decision: keep it and
+    the objections it finished. Only a reply with no visible decision counts as accept. (Until
+    2026-11-22 every unparseable reply counted as accept; in the test run that let 10 intended
+    rejections through.)"""
+    m = re.search(r'"decision"\s*:\s*"(accept|reject)"', txt)
+    body = txt.split('"objections"', 1)[1].split('"suggested_check"', 1)[0] if '"objections"' in txt else ""
+    objections = []
+    for raw in re.findall(r'"((?:[^"\\]|\\.)*)"', body):          # complete strings only
+        try:
+            objections.append(json.loads(f'"{raw}"'))
+        except json.JSONDecodeError:
+            pass
+    return dict(decision=m[1] if m else "accept", objections=[o for o in objections if len(o) > 15],
+                parse_error=txt[:200], salvaged=bool(m))
 
 
 def run(ws, question, llm, cfg, critic=None, log=None, on_event=None):

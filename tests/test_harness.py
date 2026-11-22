@@ -153,6 +153,17 @@ def test_skeptic_can_veto_once(ws):
     assert tr["stop"] == "answered" and len(tr["skeptic_reviews"]) == 1
 
 
+def test_cut_off_critic_reply_keeps_its_decision(ws):
+    """A critic reply truncated by the token limit used to count as 'accept'; its visible 'reject' must hold."""
+    cut = '{"decision": "reject", "objections": ["only one source was checked for the shoe depth", "the second report says 5,11'
+    critic = ScriptedLLM([dict(content=cut)])
+    llm = ScriptedLLM([call("get_facts", quantity="casing_shoe_depth", qualifier="9.63"), submit(), submit()])
+    tr = harness.run(ws, Q, llm, bare(skeptic=True, skeptic_rounds=1), critic=critic)
+    assert "skeptic review rejected" in tr["rejections"][0] and "only one source" in tr["rejections"][0]
+    assert tr["skeptic_reviews"][0]["salvaged"] and len(tr["skeptic_reviews"][0]["objections"]) == 1
+    assert harness.salvage_review("no json at all")["decision"] == "accept"
+
+
 def test_budget_forces_an_answer(ws):
     a = lambda k: call("get_facts", quantity="spp", start=f"2020-12-{k:02d}", end=f"2020-12-{k + 1:02d}")
     llm = ScriptedLLM([a(1), a(2), a(3), submit(verdict="abstain", value=None, explanation="Out of budget.", evidence="c1")])
