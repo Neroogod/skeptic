@@ -38,6 +38,7 @@ def base_theta(fits_file, *keys):
 
 
 def export_lsu():
+    """LSU H-001 trip events, geometry and per-event element arrays (LSU-only data)."""
     ev = pd.read_pickle(Path(tc.CACHE_DIR) / "events_fill.pkl")
     md, inc, az, _ = tc.load_survey()
     geo = tc.geometry(md, inc, az)
@@ -51,6 +52,7 @@ def export_lsu():
 
 
 def export_forge():
+    """FORGE 16A trip events, geometry and per-event element arrays, from PETE's FORGE data layer."""
     import forge_data as fd
     ev, geo, by_run, P = fd.load_all()
     return dict(well="forge", ev=ev, geo=geo, P={k: np.asarray(v) for k, v in P.items()},

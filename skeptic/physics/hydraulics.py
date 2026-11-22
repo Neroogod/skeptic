@@ -48,7 +48,8 @@ def annulus_loss(q_gpm, mw_ppg, pv_cp, yp, d_hole_in, d_pipe_in, length_ft):
         g = pv_cp * v / (1000 * dh ** 2) + yp / (200 * dh)
     else:
         g = mw_ppg ** 0.75 * v ** 1.75 * pv_cp ** 0.25 / (1396 * dh ** 1.25)
-    return dict(dp_psi=round(g * length_ft, 1), velocity_ft_min=round(60 * v, 1), reynolds=round(re_), regime="laminar" if re_ < 2100 else "turbulent")
+    return dict(dp_psi=round(g * length_ft, 1), velocity_ft_min=round(60 * v, 1), reynolds=round(re_),
+                regime="laminar" if re_ < 2100 else "turbulent")
 
 
 def spp_estimate(q_gpm, mw_ppg, pv_cp, yp, tfa_in2, depth_ft, dp_od, dp_id, dp_len_ft, bha_od, bha_id, bha_len_ft,

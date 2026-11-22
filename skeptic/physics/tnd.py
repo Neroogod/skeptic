@@ -68,6 +68,7 @@ def softstring(L, wL, mu, sgn, geo, n_iter=6):
 
 
 def theta_dict(model, x):
+    """Full parameter dict for `model` from its free values x; the rest keep FIXED ('mu' sets both zones)."""
     th = dict(FIXED)
     for name, v in zip(MODELS[model], x):
         if name == "mu":
@@ -280,9 +281,12 @@ def track_open_friction(ds, t0=None, t1=None, min_events=6, open_ft=None):
         if len(idx) < min_events:
             continue
         y = ev.hook.values[idx]
-        hl = lambda mu: predict(ds, dict(th0, mu_open=mu), idx)
-        loss = lambda mu: float(np.sum(np.where(np.abs(y - hl(mu)) <= HUBER_KLB, 0.5 * (y - hl(mu)) ** 2,
-                                                HUBER_KLB * (np.abs(y - hl(mu)) - 0.5 * HUBER_KLB))))
+        def hl(mu, idx=idx):                       # hook loads of this trip for a trial mu_open
+            return predict(ds, dict(th0, mu_open=mu), idx)
+
+        def loss(mu, y=y):                         # Huber loss (2 klb) of the trip's misfit
+            r = np.abs(y - hl(mu))
+            return float(np.sum(np.where(r <= HUBER_KLB, 0.5 * r ** 2, HUBER_KLB * (r - 0.5 * HUBER_KLB))))
         mu = minimize_scalar(loss, bounds=(-0.5, 2.0), method="bounded", options=dict(xatol=1e-4)).x
         r = y - hl(mu)
         J = (hl(mu + 1e-3) - hl(mu - 1e-3)) / 2e-3

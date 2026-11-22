@@ -67,6 +67,7 @@ class TextIndex:
         return TextIndex(chunks, self.k1, self.b)
 
     def score(self, query):
+        """BM25 score of every chunk for the query."""
         q = tokenize(query)
         out = []
         for i, tf in enumerate(self.tf):
@@ -79,6 +80,7 @@ class TextIndex:
         return out
 
     def search(self, query, k=8, t0=None, t1=None, source=None):
+        """Top-k chunks by BM25 score, optionally limited to a time window or a source."""
         scores = self.score(query)
         hits = []
         for i in sorted(range(len(scores)), key=lambda i: -scores[i]):

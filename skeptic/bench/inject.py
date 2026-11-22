@@ -15,6 +15,8 @@ from ..evidence.text import Chunk
 
 
 def apply(ws, spec):
+    """Copy of the workspace with one fault planted, as described by spec['type']: stuck_channel,
+    clock_offset, depth_shift, sensor_drift, fact_value, planted_text or combo. The original is never changed."""
     w = ws.fork()
     kind = spec["type"]
     if kind == "stuck_channel":

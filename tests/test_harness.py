@@ -1,5 +1,4 @@
 """Phase 4 gate: the harness mechanics, driven by a scripted LLM (no API key needed)."""
-import json
 
 import pytest
 

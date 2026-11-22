@@ -22,6 +22,7 @@ def screen(text):
 
 
 def annotate(tool_text):
+    """Append a warning to a tool result that contains instruction-like text. Returns (text, hits)."""
     hits = screen(tool_text)
     if not hits:
         return tool_text, []

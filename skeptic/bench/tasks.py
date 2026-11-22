@@ -11,7 +11,7 @@ A task = a question about one well + (optional) injection spec + answer key + sc
          cause_any    keywords, one of which must appear in `cause` (explanation tasks)
 """
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from typing import Optional
 
 

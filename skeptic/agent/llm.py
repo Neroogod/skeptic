@@ -21,6 +21,8 @@ class OpenRouterLLM:
         self.temperature, self.max_tokens, self.seed = temperature, max_tokens, seed
 
     def chat(self, messages, tools=None, tool_choice=None):
+        """One chat-completion call (retried on transient API errors). Returns {content, tool_calls, usage};
+        tool arguments that are not valid JSON come back as {'_unparseable': text}."""
         kw = dict(model=self.model, messages=messages, temperature=self.temperature, max_tokens=self.max_tokens,
                   extra_body={"usage": {"include": True}})          # OpenRouter returns the cost in usage
         if self.seed is not None:
@@ -33,7 +35,7 @@ class OpenRouterLLM:
             try:
                 r = self.client.chat.completions.create(**kw)
                 break
-            except Exception as e:                                   # noqa: BLE001
+            except Exception:                                   # noqa: BLE001
                 if attempt == 3:
                     raise
                 time.sleep(2 ** attempt)
@@ -60,6 +62,7 @@ class ScriptedLLM:
         self.seen = []
 
     def chat(self, messages, tools=None, tool_choice=None):
+        """Next scripted reply (a dict, or a function of the messages), in the same format as OpenRouterLLM.chat."""
         self.seen.append(messages)
         if self.i >= len(self.script):
             return dict(content="(script exhausted)", tool_calls=[], usage=dict(prompt_tokens=0, completion_tokens=0, cost_usd=0.0))

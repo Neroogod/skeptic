@@ -4,7 +4,6 @@ every benchmark task gets its own view of the data and the original stays clean.
 import pickle
 from dataclasses import dataclass, field
 
-import pandas as pd
 
 from .. import config
 from .store import FactStore

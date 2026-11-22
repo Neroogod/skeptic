@@ -20,6 +20,7 @@ CSC 7700 individual project (LSU, Fall 2026). The physics (soft-string torque an
 | `scripts/export_tnd.py` | One-off export of torque-and-drag inputs from the PETE pipeline |
 | `results/` | The held-out test-set runs (`test_set/`, FORGE only, gzipped traces), two live demo traces (`demo/`), and the physics-check outcomes on the friction windows |
 | `slides/` | The final deck (`Skeptic_CSC7700_Oghale.pptx` / `.pdf`), built by `build_figures.py` and `build_slides.py` from `results/` |
+| `CODE_TOUR.md` | How one question moves through the code, with file and line references |
 | `tests/` | 51 tests (evidence, physics, harness, benchmark, UI); 7 more LSU tests stay local in `tests/private/` |
 
 ## Setup
@@ -45,7 +46,7 @@ The demo's **Replay trace** mode needs no key or network: it replays local runs 
 | Config | What changes |
 |---|---|
 | `skeptic` | Full system: all tools, ledger gate, identifiability gate, skeptic review, verifier, guard |
-| `react` | Same tools, plain ReAct prompt, no ledger, no gates, no skeptic |
+| `react` | Same tools, plain ReAct prompt; no ledger gate, identifiability gate or skeptic critic (keeps the evidence-id and number checks and the guard) |
 | `no_physics` | Evidence tools only: no QC checks and no physics |
 | `no_skeptic` | No ledger gate and no skeptic review |
 | `no_gate` | No identifiability gate |

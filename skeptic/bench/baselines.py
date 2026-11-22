@@ -22,6 +22,8 @@ def _flag(ans, fault, explanation, value=None):
 
 
 def fixed_pipeline(ws, task):
+    """Run every check that fits the task's scope, in a fixed order; the first flag is the answer.
+    Returns (answer, calls)."""
     s = task.scope
     ans = dict(verdict="no_fault", confidence=0.6, explanation="all checks passed", evidence=[])
     calls = []

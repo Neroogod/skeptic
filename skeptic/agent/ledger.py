@@ -37,6 +37,7 @@ class Ledger:
         return self.h[hid]
 
     def update(self, hid, status, evidence=(), note=""):
+        """Set hypothesis `hid` to `status`, adding the tool-call ids (c1, c2, ...) that justify it."""
         if hid not in self.h:
             raise KeyError(f"no hypothesis {hid}; have {list(self.h)}")
         if status not in STATUSES:
@@ -99,7 +100,8 @@ ANSWER_PARAMS = dict(
         "transcription_error: a digit/character slip when copying between documents; "
         "planted_instruction: a document contains text addressed to an AI system")),
     quantity=S("what the answer is about, e.g. casing_shoe_depth or spp_psi"),
-    value=N("the single number the question asks for (corrected value, offset size, measured quantity); always fill it when the question asks for a number"),
+    value=N("the single number the question asks for (corrected value, offset size, measured quantity); "
+            "always fill it when the question asks for a number"),
     unit=S("unit of value"),
     wrong_value=N("the recorded value you judge wrong (if any)"),
     wrong_source=S("locator/source of the wrong value"),

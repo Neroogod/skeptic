@@ -68,7 +68,8 @@ def oracle(task, ws):
     if f == "drift":
         return qc.block_weight_trend(e, s["start"], s["end"])["verdict"] == "drift"
     if f == "mud_weight":
-        x = ws.facts.get("mud_weight", "mud check", pd.Timestamp(s["start"]) - pd.Timedelta("4D"), pd.Timestamp(s["end"]) + pd.Timedelta("4D"), limit=500)
+        t0, t1 = pd.Timestamp(s["start"]) - pd.Timedelta("4D"), pd.Timestamp(s["end"]) + pd.Timedelta("4D")
+        x = ws.facts.get("mud_weight", "mud check", t0, t1, limit=500)
         vals = x.value.astype(float)
         inside = x[(pd.to_datetime(x.time) >= pd.Timestamp(s["start"])) & (pd.to_datetime(x.time) <= pd.Timestamp(s["end"]))]
         out_of_range = any(not (6.5 <= float(v) <= 20) for v in inside.value)
@@ -122,6 +123,8 @@ def _allowed(df, P, depth=False):
 
 
 def forge_tasks(P=None):
+    """Build the FORGE task set for spec P (DEV or TEST), one section per fault family. A planted
+    fault is kept only if its oracle check finds it; a control only if the check passes on clean data."""
     P = P or DEV
     px = P["prefix"]
     rng = random.Random(P["seed"])
@@ -158,7 +161,7 @@ def forge_tasks(P=None):
     # clock offsets vs the report time log + controls
     offsets = P["clock_offsets"]
     k = 0
-    for i, day in enumerate(P["clock_days"]):
+    for day in P["clock_days"]:
         s, e = day_window(day)
         q = (f"Do the rig data and the daily report's time log agree in time between {fmt(s)} and {fmt(e)}? "
              f"If there is a clock offset, how many minutes?")
@@ -447,6 +450,7 @@ def lsu_tasks():
 
 
 def main(argv=None):
+    """Build the task sets named on the command line (dev, test, lsu; default all) and save them under bench/."""
     import sys
     which = set(argv if argv is not None else sys.argv[1:]) or {"dev", "test", "lsu"}
     pub = config.BENCH / "public"

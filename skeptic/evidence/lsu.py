@@ -100,6 +100,7 @@ PASON = {"Date Time": "t", "Hole Depth (feet)": "hole_depth_ft", "Bit Depth (fee
 
 
 def load_edr(use_cache=True):
+    """The LSU Pason rig log (10 s), cleaned, with flow-in, SPP and WITS matched by minute; cached as parquet."""
     cache = config.CACHE / "lsu_edr.parquet"
     if use_cache and cache.exists():
         return pd.read_parquet(cache)
@@ -129,6 +130,7 @@ def load_wits():
 
 
 def memo_evidence(edr):
+    """Rig memos in the Pason log: each becomes a text chunk, and numbers in it become facts."""
     facts, chunks = [], []
     m = edr.dropna(subset=["memo"])
     for i, r in m.iterrows():
@@ -145,6 +147,8 @@ def memo_evidence(edr):
 
 # --------------------------------------------------------------------- tour sheets
 def tour_evidence():
+    """Facts and text chunks from the IADC tour sheets, sheet by sheet (mud checks, surveys, pumps,
+    hook load and torque, bits, BHA, casing, drilling intervals, time log)."""
     F, C = [], []
     S = "lsu_tour_sheet"
     fn = config.LSU_FILES["tour"].name
@@ -230,6 +234,8 @@ def tour_evidence():
 
 # ---------------------------------------------------------------------- Halliburton
 def halliburton_evidence():
+    """Facts and text chunks from the Halliburton workbook, sheet by sheet. The 'Checks vs Pason'
+    sheet is never read: it holds the instructor's QC conclusions (the answer key)."""
     F, C = [], []
     S = "lsu_halliburton"
     fn = config.LSU_FILES["halliburton"].name
@@ -322,6 +328,7 @@ def halliburton_evidence():
 
 # ---------------------------------------------------------------------------- EOW
 def eow_chunks(max_chars=1200):
+    """The end-of-well report PDF as text chunks of at most max_chars characters, one locator per page."""
     import fitz
     doc = fitz.open(config.LSU_FILES["eow"])
     out = []

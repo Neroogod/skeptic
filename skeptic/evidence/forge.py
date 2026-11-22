@@ -145,7 +145,7 @@ def parse_report(path):
             fact("funnel_viscosity", num(m[3]), "s/qt", i, time=t, qualifier="mud check", raw=ln)
 
     # bits: "9 8.75 SMITH PDC JV2705 4x12, 4x11 0.910 N 5,200 5,345 145 ..."
-    for i, ln in enumerate(section(lines, r"^NO\. SIZE MANUFACTURER", [r"^BIT NO\.", r"^PUMPS"]), 0):
+    for ln in section(lines, r"^NO\. SIZE MANUFACTURER", [r"^BIT NO\.", r"^PUMPS"]):
         m = re.match(r"^(\w+)\s+(\d+(?:\.\d+)?)\s+(.*?)\s+(\d?\.\d{2,3})\s+([YN])\b\s*(" + NUM + r")?\s*(" + NUM + r")?", ln)
         if not m:
             continue
@@ -327,6 +327,7 @@ def load_survey():
 
 
 def survey_facts():
+    """Inclination and azimuth of every station of the definitive survey, as facts."""
     md, inc, az = load_survey()
     loc = config.FORGE_FILES["survey"].name
     out = []

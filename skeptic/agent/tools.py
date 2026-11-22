@@ -31,6 +31,7 @@ def tool(name, description, params, required=()):
     return wrap
 
 
+# JSON-schema helpers for tool arguments: S = string, N = number, I = integer
 S = lambda d: dict(type="string", description=d)
 N = lambda d: dict(type="number", description=d)
 I = lambda d: dict(type="integer", description=d)
@@ -55,6 +56,8 @@ def _clean(x):
 
 
 def validate(name, args):
+    """Check a call against its schema: known tool, required arguments present, no unknown arguments,
+    right types and enum values. Raises ValueError with a message the model can act on."""
     if name not in TOOLS:
         raise ValueError(f"unknown tool {name!r}; available: {sorted(TOOLS)}")
     p = TOOLS[name]["schema"]["function"]["parameters"]
@@ -203,7 +206,10 @@ def edr_values(ws, channels, start, end, every_min=None, feed="edr"):
     span = (pd.Timestamp(end) - pd.Timestamp(start)).total_seconds() / 60
     every = every_min or max(1, int(np.ceil(span / 48)))
     r = df.set_index("t")[cols].resample(f"{every}min").median().head(48)
-    return dict(every_min=every, rows=[dict(t=str(i), **{c: (None if pd.isna(v) else round(float(v), 2)) for c, v in row.items()}) for i, row in r.iterrows()])
+    rows = []
+    for t, row in r.iterrows():
+        rows.append(dict(t=str(t), **{c: None if pd.isna(v) else round(float(v), 2) for c, v in row.items()}))
+    return dict(every_min=every, rows=rows)
 
 
 # ============================================================ data-quality checks
@@ -225,7 +231,8 @@ def report_activity(ws, start, end):
         if ws.well == "forge" and c.source == "forge_daily_report":
             m = re.match(r"\[[\d-]+ [\d:]+-[\d:]+, ([\d.]+) h\] (.*)", c.text)
             if m:
-                out.append((c.time, c.time + pd.Timedelta(hours=float(m[1])), bool(re.match(r"(Surface|Intermediate|Production) Drilling Drilling\b", m[2]))))
+                drilling = bool(re.match(r"(Surface|Intermediate|Production) Drilling Drilling\b", m[2]))
+                out.append((c.time, c.time + pd.Timedelta(hours=float(m[1])), drilling))
         elif ws.well == "lsu" and c.source == "lsu_tour_sheet":
             m = re.match(r"\[[\d-]+ ([\d:]+)-([\d:]+), IADC ([\d.]+)", c.text)
             if m:
@@ -285,7 +292,7 @@ def check_series_continuity(ws, quantity, max_step, start=None, end=None, qualif
     x = ws.facts.get(quantity, qualifier, start, end, source=source, limit=1000)
     x = x[pd.to_numeric(x.value, errors="coerce").notna()]
     out = qc.continuity(x.value.astype(float).values, list(x.time), max_step)
-    lookup = {str(t): l for t, l in zip(x.time, x.locator)}
+    lookup = {str(t): loc for t, loc in zip(x.time, x.locator)}
     for o in out["isolated_outliers"]:
         o["locator"] = lookup.get(o["time"])
     return out
@@ -335,7 +342,7 @@ def _tnd(ws):
     try:
         return tnd.dataset(ws.well)
     except FileNotFoundError as e:
-        raise ValueError(str(e))
+        raise ValueError(str(e)) from e
 
 
 @tool("hookload_model", "Fit a soft-string torque-and-drag model to the steady trip hook loads (pick-ups and slack-offs) in a "

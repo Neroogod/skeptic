@@ -456,7 +456,7 @@ def methods_eval(N):
     text(s, 8.75, 3.65, 3.8, 3.2, [
         [("Development set ", True, WHITE), (f"{N['n_dev_forge'] + N['n_dev_lsu']} tasks used while building ({N['n_dev_lsu']} private LSU).", False)],
         [("Held-out test set ", True, WHITE), (f"{N['n_test']} tasks from other days, hashed and frozen with 4 written predictions before any run.", False)],
-        [("Baselines ", True, WHITE), ("ReAct (same model and tools, no gates) and a fixed pipeline (no LLM).", False)],
+        [("Baselines ", True, WHITE), ("ReAct (same model and tools; no ledger, identifiability or critic gate) and a fixed pipeline (no LLM).", False)],
         [("Statistics ", True, WHITE), (f"3 runs each, {N['runs']} per LLM system; paired by task, bootstrap CI, sign-flip p.", False)]],
         BODY, 12, space=8)
     text(s, 0.7, 5.7, 7.5, 1.1, "A planted fault is kept only if its reference check finds it, and a control only if the same check "

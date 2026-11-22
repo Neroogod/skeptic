@@ -45,6 +45,8 @@ def load_rows(dirs, rescore=True):
 
 
 def table(df):
+    """One row per configuration: accuracy (overall and by slice), detection, false alarms,
+    confident-wrong, abstention, risk-coverage AUC, cost and tool calls."""
     out = []
     for cfg in [c for c in ORDER if c in set(df.config)] + sorted(set(df.config) - set(ORDER)):
         g = df[df.config == cfg]
@@ -97,6 +99,7 @@ def section(title, d):
 
 
 def main(dirs):
+    """Print the tables and write report.md: the held-out test set first, then the development set."""
     df = load_rows(dirs)
     if df.empty:
         print("no runs found")

@@ -19,6 +19,9 @@ def norm_type(t):
 
 
 def score(task, answer):
+    """Deterministic scoring against the task key: right verdict, right fault type, value within
+    tolerance, cause words if required. Also returns detection, false alarm, abstention and
+    confident-wrong (wrong at confidence >= 0.7). A fallback abstention is never correct."""
     k = task.key if isinstance(task.key, dict) else task["key"]
     if not answer:
         return dict(correct=False, detected=False, false_alarm=False, abstained=False, confident_wrong=False,

@@ -198,7 +198,7 @@ def run(ws, question, llm, cfg, critic=None, log=None, on_event=None):
             key = (c["name"], json.dumps(c["arguments"], sort_keys=True))
             seen[key] = seen.get(key, 0) + 1
             if c["name"] not in cfg.tools:
-                out, text = {"error": f"tool {c['name']} is not available in this configuration"}, None
+                out = {"error": f"tool {c['name']} is not available in this configuration"}
                 text = json.dumps(out)
             elif "_unparseable" in c["arguments"]:
                 out = {"error": "your arguments were not valid JSON (cut off?). Send the call again with complete JSON."}

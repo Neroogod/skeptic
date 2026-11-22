@@ -28,6 +28,7 @@ TASK_FILES = {"forge": "public/forge_tasks.json",      # development set (FORGE)
 
 
 def load_tasks(wells, ids=None):
+    """Tasks from the named task sets (forge, lsu, test), optionally only the given ids."""
     tasks = []
     for w in wells:
         f = config.BENCH / TASK_FILES[w]
@@ -44,6 +45,7 @@ def task_workspace(task):
 
 
 def run_one(task, cfg_name, seed=0, model=None):
+    """Run one task with one configuration and seed; returns (score row, trace)."""
     ws = task_workspace(task)
     if cfg_name == "fixed":
         t0 = time.time()
@@ -62,6 +64,8 @@ def run_one(task, cfg_name, seed=0, model=None):
 
 
 def main(argv=None):
+    """Command line: run configurations x task sets x seeds in parallel; writes runs/<stamp>/traces.jsonl
+    and summary.json, and stops if the total cost passes --max-cost."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--configs", default="fixed")
     ap.add_argument("--wells", default="forge,lsu", help="task sets: forge, lsu (development), test (held out)")
@@ -102,7 +106,9 @@ def main(argv=None):
         list(pool.map(work, jobs))
     if total > a.max_cost:
         print(f"cost cap {a.max_cost} USD reached; some runs skipped")
-    summ = dict(summary=S.summarize(rows), aurc={c: S.aurc(S.risk_coverage([r for r in rows if r["config"] == c])) for c in {r["config"] for r in rows}},
+    configs = {r["config"] for r in rows}
+    aurc = {c: S.aurc(S.risk_coverage([r for r in rows if r["config"] == c])) for c in configs}
+    summ = dict(summary=S.summarize(rows), aurc=aurc,
                 total_cost_usd=round(total, 3), n_runs=len(rows))
     (out / "summary.json").write_text(json.dumps(summ, indent=1, default=str))
     print(json.dumps(summ, indent=1, default=str))
