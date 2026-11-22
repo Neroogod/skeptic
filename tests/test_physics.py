@@ -186,6 +186,42 @@ def test_identifiability_needs_consistent_physical_trips():
     assert bad["verdict"] == "not identifiable" and any("physical range" in r for r in bad["reasons"])
     weak = tnd.identifiability(ds, "mu_open", tnd.select(ds, "2020-11-24", "2020-11-27"), t0="2020-11-24", t1="2020-11-27")
     assert weak["verdict"] == "not identifiable" and "sensitivity" in weak["reasons"][0]
+    # what would settle it: deeper trips for the shallow window; a records check, not more trips, for the others
+    assert ok["next_measurement"] is None
+    assert "bit below about" in weak["next_measurement"]
+    assert "check_hookload_physics" in bad["next_measurement"]
+
+
+def _window(ds, t0, t1):
+    return tnd.physics_check(ds, tnd.select(ds, t0, t1))
+
+
+@pytest.mark.skipif(not has_tnd("forge"), reason="run scripts/export_tnd.py")
+def test_physics_check_passes_clean_trips_and_flags_impossible_loads():
+    """Deep trips 12-14 Dec fit a friction factor; the 27 Dec logging trip picks up lighter than the
+    frictionless string, which no friction can do (PETE P8 found the same trip)."""
+    ds = tnd.dataset("forge")
+    assert _window(ds, "2020-12-12", "2020-12-14")["verdict"] == "consistent with friction"
+    log = _window(ds, "2020-12-26", "2020-12-29")
+    assert log["verdict"] == "readings no friction factor explains"
+    assert log["by_reason"]["pick-up below zero-friction load"] >= 3 and 133 in log["trips_flagged"]
+
+
+@pytest.mark.skipif(not has_tnd("forge"), reason="run scripts/export_tnd.py")
+def test_physics_check_catches_a_planted_hookload_error():
+    """One pick-up of a clean trip (bit ~8,070 ft in the 65-degree tangent) is corrupted.
+    Set 30 klb below the frictionless load it is flagged. Dropped by 60 klb it is not: friction adds
+    ~70 klb there, so the reading is still physically possible (the check's stated limit)."""
+    ds = tnd.dataset("forge")
+    idx = tnd.select(ds, "2020-12-12", "2020-12-14")
+    j = idx[ds["P"]["sgn"][idx] > 0][10]
+    free = tnd.predict(ds, dict(ds["base_theta"], c_s=0.0, mu_cased=0.0, mu_open=0.0), np.array([j]))[0]
+    for new, caught in ((free - 30.0, True), (ds["ev"].hook.values[j] - 60.0, False)):
+        bad = dict(ds, ev=ds["ev"].copy())
+        bad["ev"].loc[bad["ev"].index[j], "hook"] = new
+        out = tnd.physics_check(bad, idx)
+        assert (out["by_reason"] == {"pick-up below zero-friction load": 1}) == caught
+    assert tnd.physics_check(ds, idx)["readings_outside_envelope"] == 0        # the cached data are untouched
 
 
 def test_clock_offset_without_drilling_is_insufficient_not_aligned():

@@ -375,6 +375,19 @@ def friction_by_trip(ws, start=None, end=None):
     return dict(trips=rows, note="se is a lower bound (ignores within-trip correlation)")
 
 
+@tool("check_hookload_physics", "Tells friction from data errors in trip hook loads. Whatever the friction, a pick-up cannot "
+      "weigh less than the string with zero friction, a slack-off cannot weigh more, and no reading can need friction above "
+      "0.8. Flags readings outside that envelope (by more than 3 sigma of the well's scatter) and trips that no single "
+      "friction value fits. A flagged reading is a sensor, string, fill-state, depth or sticking problem, not friction.",
+      dict(start=S(TIME), end=S(TIME)), ["start", "end"])
+def check_hookload_physics(ws, start, end):
+    ds = _tnd(ws)
+    idx = tnd.select(ds, start, end)
+    if len(idx) < 3:
+        raise ValueError(f"only {len(idx)} steady trip events in this window; widen it")
+    return tnd.physics_check(ds, idx)
+
+
 @tool("trip_tank_displacement", "Trip-tank gain per foot of pipe run in during a trip in: closed-end (float holding, pipe "
       "running empty) vs open-end (pipe filling through the bit).", dict(start=S(TIME), end=S(TIME)), ["start", "end"])
 def trip_tank_displacement(ws, start, end):

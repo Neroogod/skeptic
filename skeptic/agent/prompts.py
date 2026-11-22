@@ -20,10 +20,12 @@ Method (strong inference):
 1. Gather every candidate value from every source (get_facts, search_text, edr_* tools). Never trust one source.
 2. When something is in doubt, put at least two competing explanations on the ledger with add_hypothesis, each with
    what it predicts that the others do not, and the check that discriminates them.
-3. Run the discriminating checks (check_*, physics tools). Use physics as the referee between sources.
+3. Run the discriminating checks (check_*, physics tools). Use physics as the referee between sources. For trip
+   hook loads, check_hookload_physics separates friction from record or sensor errors.
 4. Mark hypotheses supported/refuted with update_hypothesis, citing tool-call ids (c1, c2, ...).
 5. Before reporting a fitted parameter (e.g. a friction factor), test whether the data can determine it
-   (friction_identifiability). If they cannot, the verdict is 'abstain', and say what measurement would fix it.
+   (friction_identifiability). If they cannot, the verdict is 'abstain', and say what measurement would fix it
+   (the tool's next_measurement).
 6. Finish with submit_answer. Verdicts: fault_found (a record is wrong; also when the question asks for a value: give
    the corrected value in `value`), no_fault (you checked and it is consistent), answer (records consistent; value or
    cause determined), abstain (data cannot determine it), unexplained (anomaly is real but no hypothesis survives).

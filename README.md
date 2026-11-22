@@ -6,19 +6,19 @@ A falsification-first agent for drilling data. Asked a question about a well, it
 2. **Explains.** It keeps a ledger of competing hypotheses, runs the discriminating test for each, and a second model tries to refute the winner.
 3. **Abstains.** If the data cannot determine a quantity, which it judges from the fit's uncertainty rather than the LLM's own confidence, it refuses to answer and says what measurement would help.
 
-CSC 7700 individual project (LSU, Fall 2026). The physics (soft-string torque and drag, fill-state model, FORGE bit-depth rebuild) comes from the author's PETE 7103 project and is reused with attribution in the docstrings. The CSC contribution is the agent harness, the evidence layer and the benchmark.
+CSC 7700 individual project (LSU, Fall 2026). The physics (soft-string torque and drag, fill-state model, FORGE bit-depth rebuild, and the hook-load data check from its stages P6/P8) comes from the author's PETE 7103 project and is reused with attribution in the docstrings. The CSC contribution is the agent harness, the evidence layer and the benchmark.
 
 ## Layout
 
 | Path | What |
 |---|---|
 | `skeptic/evidence/` | Parsers for FORGE daily reports and EDR, and for LSU Pason, tour sheets, Halliburton workbook and EOW. Builds a fact store with provenance and a hand-written BM25 index. |
-| `skeptic/physics/` | Soft-string hook-load model with trip-clustered sandwich CIs, identifiability, hydraulics, unit reading, and data-QC checks |
+| `skeptic/physics/` | Soft-string hook-load model with trip-clustered sandwich CIs, identifiability with the measurement that would settle it, a physics data check (readings no friction factor can explain), hydraulics, unit reading, and data-QC checks |
 | `skeptic/agent/` | Tool registry, hypothesis ledger, injection guard, number verifier, hand-written control loop, prompts, OpenRouter client |
 | `skeptic/bench/` | Fault injector, benchmark builder with oracle validation, deterministic scorer, fixed-pipeline baseline, runner |
 | `app.py` | Streamlit demo, with live runs, a sabotage menu and trace replay |
 | `scripts/export_tnd.py` | One-off export of torque-and-drag inputs from the PETE pipeline |
-| `tests/` | 54 tests (evidence, physics, harness, benchmark, UI) |
+| `tests/` | 56 tests (evidence, physics, harness, benchmark, UI) |
 
 ## Setup
 
@@ -78,6 +78,10 @@ See [RESULTS.md](RESULTS.md). On the held-out test set the three systems tie on 
 Skeptic is confidently wrong about half as often as ReAct (6.9% vs 12.7%, p = 0.017) and has a much lower
 risk-coverage curve, at the price of more abstentions and 1.8x the cost.
 
+These results are for commit `2a2e1e6`. The physics data check and the `next_measurement` advice
+(PLAN.md, "v4") were added afterwards and have not been evaluated with LLM runs; the fixed pipeline
+scores the same with them (0.762).
+
 ## Data and confidentiality
 
 - **LSU H-001 is LSU-only.** It is processed locally and must not be committed or published. `cache/`, `runs/`, `bench/private/` and `.env` are git-ignored.
@@ -94,3 +98,7 @@ risk-coverage curve, at the price of more abstentions and 1.8x the cost.
   but trip by trip the fitted value is negative. A narrow CI is not identifiability; the test now also requires the
   trips to agree and the value to be physical.
 - The 2020-11-09 daily report's time log is about 18 minutes off the rig clock.
+- The physics data check (pick-up >= frictionless weight >= slack-off) finds three FORGE problems that are not
+  friction: the 27 Dec logging trip picks up 24-36 klb lighter than the frictionless string, the 22 Dec trip out
+  would need friction above 0.8 in the upper hole, and two 28 Nov slack-offs weigh more than the frictionless
+  string (pipe fuller than the fill record says).

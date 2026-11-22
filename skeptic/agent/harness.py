@@ -27,7 +27,7 @@ EVIDENCE_TOOLS = ["get_facts", "search_text", "read_text", "list_channels", "edr
 CHECK_TOOLS = ["check_stuck_channel", "check_clock_offset", "check_depths", "check_surveys", "check_block_weight",
                "check_series_continuity", "interpret_units", "check_tfa", "calculate"]
 PHYSICS_TOOLS = ["pump_output", "bit_hydraulics", "hookload_model", "friction_identifiability", "friction_by_trip",
-                 "trip_tank_displacement"]
+                 "check_hookload_physics", "trip_tank_displacement"]
 LEDGER_TOOLS = ["add_hypothesis", "update_hypothesis"]
 
 

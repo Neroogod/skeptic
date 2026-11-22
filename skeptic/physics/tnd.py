@@ -13,6 +13,9 @@ Measurement model (PETE stage 4, without the surge and indicator-bias terms):
   c_s: closed-end surge/swab drag, linear in pipe speed v (ft/min) and bit depth D (kft)
   F_surface: soft-string (Johancsik 1984) tension at surface, solved by Picard
   iteration on the element equations (same discrete equations as PETE tdcore).
+
+physics_check() and next_measurement() adapt the author's PETE 7103 stage P8 (physics-based
+error control) and P6 (hole-condition monitor) to these arrays.
 """
 import pickle
 from functools import lru_cache
@@ -252,7 +255,8 @@ def identifiability(ds, parameter, idx, model="zone_mu_and_fill", tolerance=0.1,
                       informative_trips=[dict(trip=r["trip"], state=r["state"], start=r["start"], mu_open=r["mu_open"],
                                               sens_klb_per_mu=r["sens_klb_per_mu"]) for r in inf],
                       n_weak_trips=len(trips) - len(inf), verdict="not identifiable" if reasons else "identifiable",
-                      reasons=reasons, method="trip-by-trip mu_open with weight terms held at the well's global fit")
+                      reasons=reasons, next_measurement=next_measurement(ds, reasons, inf),
+                      method="trip-by-trip mu_open with weight terms held at the well's global fit")
 
 
 def track_open_friction(ds, t0=None, t1=None, min_events=6, open_ft=None):
@@ -289,3 +293,141 @@ def track_open_friction(ds, t0=None, t1=None, min_events=6, open_ft=None):
                          mu_open=round(float(mu), 3), se=round(float(np.sqrt(np.sum((psi * J) ** 2)) / A), 3) if A > 0 else None,
                          rms_klb=round(float(np.sqrt(np.mean(r ** 2))), 2), sens_klb_per_mu=round(float(np.mean(np.abs(J))), 1)))
     return rows
+
+
+@lru_cache(maxsize=2)
+def visible_depth(well):
+    """Shallowest bit depth (ft MD) at which any trip of the well constrains mu_open
+    (sensitivity >= MIN_TRIP_SENS), or None if no trip does. Used to say which measurement
+    would make friction identifiable in a window that has none."""
+    rows = [r for r in track_open_friction(dataset(well)) if r["sens_klb_per_mu"] >= MIN_TRIP_SENS]
+    return min(r["bit_ft"][1] for r in rows) if rows else None
+
+
+def next_measurement(ds, reasons, informative):
+    """What would settle a 'not identifiable' verdict (the author's PETE 7103 P8 idea, in words):
+    more data only helps when the problem is too little friction signal. When the trips disagree
+    or give impossible values, more of the same trips will not help; the records must be checked."""
+    if not reasons:
+        return None
+    if not informative:
+        d = visible_depth(ds["well"])
+        if d is None:
+            return ("no trip anywhere in this well moves the hook load enough for friction to show: the hole is too "
+                    "close to vertical, so open-hole friction cannot be measured from hook loads here; it must come "
+                    "from another well or a prior")
+        return (f"a pick-up/slack-off series with the bit below about {d} ft MD (the shallowest trip in this well "
+                f"whose hook loads move at least {MIN_TRIP_SENS:g} klb per unit mu) would make mu_open measurable")
+    return ("more trips like these will not settle it: run check_hookload_physics on this window. Readings that no "
+            "friction factor explains point to a string, fill-state or sensor record problem, not friction")
+
+
+# ============================================================ physics data check
+MU_MAX = 0.8                                        # largest friction the check allows (PETE P8)
+K_GRID = np.round(np.arange(0.0, 2.51, 0.05), 2)    # trip friction multipliers k (PETE P6)
+Z_EVENT, Z_TRIP = 3.0, 2.0                          # flag thresholds, in units of sigma_r
+WHY = {
+    "pick-up below zero-friction load": "lighter than the string would weigh with no friction at all: a hook-load "
+                                        "offset or sensor fault, a lighter string than recorded, or a wrong bit depth",
+    "slack-off above zero-friction load": "heavier than the string would weigh with no friction: more mud inside the "
+                                          "pipe than the fill record says, a heavier string, or a sensor offset",
+    "beyond the largest friction": f"would need friction above {MU_MAX}: overpull or sticking (tight hole), a heavier "
+                                   "string than recorded, or a sensor fault",
+}
+
+
+def _robust_sigma(r):
+    return float(1.4826 * np.median(np.abs(r - np.median(r))))
+
+
+def _trip_curves(ds, idx, th):
+    """Hook loads of events idx for every multiplier k in K_GRID (mu = k x the global cased and
+    open values), weight terms at the global fit, surge term left out. Row 0 (k = 0) is the
+    frictionless string."""
+    th = dict(th, c_s=0.0)
+    return np.array([predict(ds, dict(th, mu_cased=k * th["mu_cased"], mu_open=k * th["mu_open"]), idx) for k in K_GRID])
+
+
+def _best_k(y, curves, clusters):
+    """Per trip: the friction multiplier that fits best, the fitted loads and the RMS misfit left."""
+    k, fit, rms = np.zeros(len(y)), np.zeros(len(y)), np.zeros(len(y))
+    for c in np.unique(clusters):
+        i = np.where(clusters == c)[0]
+        sse = ((y[i][None, :] - curves[:, i]) ** 2).sum(axis=1)
+        b = int(np.argmin(sse))
+        k[i], fit[i], rms[i] = K_GRID[b], curves[b, i], np.sqrt(sse[b] / len(i))
+    return k, fit, rms
+
+
+@lru_cache(maxsize=2)
+def noise_scale(well):
+    """sigma_r (klb): robust scale (1.4826 x median absolute deviation) of the hook-load
+    residuals left after each trip's best friction multiplier, over every trip of the well.
+    It is the scatter that no friction value can absorb."""
+    ds = dataset(well)
+    idx = select(ds)
+    y = ds["ev"].hook.values[idx]
+    _, fit, _ = _best_k(y, _trip_curves(ds, idx, ds["base_theta"]), ds["ev"].cluster.values[idx])
+    return _robust_sigma(y - fit)
+
+
+def physics_check(ds, idx, sigma_r=None, max_rows=10):
+    """Readings that no friction factor can explain (the author's PETE 7103 P8 data check, adapted).
+
+    Whatever the friction, a pick-up cannot weigh less than the string with zero friction, a
+    slack-off cannot weigh more, and no reading can need more friction than MU_MAX. The edges of
+    this envelope come from the soft-string model with the well's global weight fit (W_block,
+    w_dp, eta) and no surge term. A reading outside it by more than 3 sigma_r is flagged.
+
+    A trip is flagged when no friction multiplier k brings its RMS misfit below 2 sigma_r and the
+    physics can tell: the trip has at least 2 pick-ups and 2 slack-offs (friction moves them in
+    opposite directions, a zero offset moves both the same way), or its best k is 0 (the whole
+    trip is lighter than the frictionless string). An offset on a one-direction trip looks like
+    a friction change, so it cannot be detected; passing the check does not prove the data right.
+
+    PETE's second tier (a reading far from its own trip's curve) is left out: the friction profile
+    here is two constants, not a fitted mu(depth), so that distance mixes profile error with
+    data error."""
+    ev, th = ds["ev"], ds["base_theta"]
+    sigma_r = sigma_r or noise_scale(ds["well"])
+    tol = Z_EVENT * sigma_r
+    y = ev.hook.values[idx]
+    pu = ds["P"]["sgn"][idx] > 0
+    curves = _trip_curves(ds, idx, th)
+    free = curves[0]
+    most = predict(ds, dict(th, c_s=0.0, mu_cased=MU_MAX, mu_open=MU_MAX), idx)
+    reason = np.where(pu & (y < free - tol), "pick-up below zero-friction load",
+             np.where(~pu & (y > free + tol), "slack-off above zero-friction load",
+             np.where((pu & (y > most + tol)) | (~pu & (y < most - tol)), "beyond the largest friction", "")))
+    outside = np.where(reason == "beyond the largest friction", np.abs(y - most), np.abs(y - free))
+
+    clusters = ev.cluster.values[idx]
+    k, _, rms = _best_k(y, curves, clusters)
+    trips = []
+    for c in np.unique(clusters):
+        i = np.where(clusters == c)[0]
+        n_pu, n_so = int(pu[i].sum()), int((~pu[i]).sum())
+        testable = (n_pu >= 2 and n_so >= 2) or k[i[0]] == 0
+        trips.append(dict(trip=int(c), start=str(ev.t.values[idx[i[0]]])[:16], pickups=n_pu, slackoffs=n_so,
+                          bit_ft=[round(float(ev.bit.values[idx[i]].min())), round(float(ev.bit.values[idx[i]].max()))],
+                          best_k=float(k[i[0]]), rms_klb=round(float(rms[i[0]]), 1),
+                          readings_outside=int((reason[i] != "").sum()),
+                          flagged=bool(testable and rms[i[0]] > Z_TRIP * sigma_r)))
+    bad = np.where(reason != "")[0]
+    rows = [dict(time=str(ev.t.values[idx[j]])[:16], trip=int(clusters[j]), direction="pick-up" if pu[j] else "slack-off",
+                 bit_ft=round(float(ev.bit.values[idx[j]])), hook_klb=round(float(y[j]), 1),
+                 zero_friction_klb=round(float(free[j]), 1), max_friction_klb=round(float(most[j]), 1),
+                 outside_by_klb=round(float(outside[j]), 1), reason=str(reason[j]))
+            for j in bad[np.argsort(-outside[bad])][:max_rows]]
+    flagged = [t for t in trips if t["flagged"]]
+    return dict(verdict="readings no friction factor explains" if len(bad) or flagged else "consistent with friction",
+                n_readings=int(len(idx)), n_trips=len(trips), sigma_r_klb=round(sigma_r, 2), tolerance_klb=round(tol, 1),
+                readings_outside_envelope=int(len(bad)),
+                by_reason={r: int((reason == r).sum()) for r in WHY if (reason == r).any()},
+                what_it_means={r: WHY[r] for r in WHY if (reason == r).any()},
+                worst_readings=rows,
+                trips_with_problems=[t for t in trips if t["readings_outside"] or t["flagged"]],
+                trips_flagged=[t["trip"] for t in flagged],
+                global_fit={p: round(float(th[p]), 3) for p in ("W_block", "w_dp", "eta", "mu_cased", "mu_open")},
+                limits="a zero offset on a trip that only picks up (or only slacks off) looks like a friction change and "
+                       "is not detected; passing does not prove the readings right")

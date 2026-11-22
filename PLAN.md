@@ -25,9 +25,8 @@ skeptic/
     physics/
       units.py           unit detection and conversion
       hydraulics.py      pump output, bit pressure drop, Bingham-plastic pressure losses
-      tnd.py             soft-string torque/drag (adapted from PETE 7103 tdcore.py)
+      tnd.py             soft-string torque/drag, identifiability, physics data check (from PETE 7103 tdcore.py, P6, P8)
       qc.py              data-quality checks: stuck channel, unit scale, depth, survey, drift, clock offset
-      identify.py        sensitivity / Fisher-information identifiability
     agent/
       llm.py             OpenRouter client + ScriptedLLM for tests
       tools.py           tool registry: schema, validation, errors returned as text
@@ -156,3 +155,33 @@ Run at commit `2a2e1e6`, $5.36. Accuracy: Skeptic 0.757, ReAct 0.778, fixed 0.76
 (identify 0.86 vs 1.00), prediction 4 held (1.8x cost). Secondary: confident-wrong 6.9% vs 12.7% (p = 0.017),
 risk-coverage AUC 0.060 vs 0.168. Found after the run: 2 clock controls rest on a sentinel output of the clock
 check (fixed afterwards; without them all three systems score 0.770). Full tables in RESULTS.md.
+
+## v4: physics data check from PETE stages P6/P8 (2026-11-22, after the test run)
+
+The author's PETE 7103 pipeline gained a physics-based error control (P8) and a hole-condition monitor
+(P6) after Skeptic's test run. Two parts carry over directly to Skeptic's "physics as referee" claim:
+
+- **`check_hookload_physics` (new tool, `tnd.physics_check`).** Whatever the friction, a pick-up cannot
+  weigh less than the frictionless string, a slack-off cannot weigh more, and no reading can need
+  friction above 0.8. Readings outside that envelope by more than 3 sigma_r are flagged, and so are trips
+  that no single friction multiplier fits (2 sigma_r) when the physics can tell. sigma_r is the robust
+  scatter left after each trip's best friction multiplier (FORGE 7.2 klb). PETE's second tier (distance
+  from the trip's own friction curve) is left out because Skeptic's friction profile is two constants,
+  not a fitted mu(depth).
+- **`friction_identifiability` now returns `next_measurement`.** It is set when the verdict is "not
+  identifiable". Too little signal: the depth below which trips in this well do constrain mu_open,
+  or, if no trip anywhere does (LSU), that the value must come from another well or a prior. Trips that
+  disagree or give impossible values: more trips will not help, check the records with
+  `check_hookload_physics`. The verdict itself is unchanged.
+- **Prompt:** two clauses in the Skeptic method point to the two outputs. ReAct gets the tool too.
+
+Verification (no LLM runs):
+- 56 public and 7 private tests pass.
+- All 3 "answer" windows of the test set's identify slice pass the check, and all 4 "abstain" windows
+  get a concrete reason: shallow (bit below about 6,853 ft needed), or readings no friction explains
+  (27 Dec logging trip lighter than the frictionless string, as PETE P8 found; 22 Dec trip out needing
+  mu above 0.8 in the upper hole; 28 Nov slack-offs heavier than the frictionless string).
+- The fixed pipeline scores exactly as before on all 63 test tasks (0.762).
+
+**Not evaluated:** the test-set results in RESULTS.md are for commit `2a2e1e6`. As pre-registered, the
+frozen test set cannot measure these changes; that needs a new held-out set.
