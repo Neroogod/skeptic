@@ -63,7 +63,12 @@ def export_forge():
 if __name__ == "__main__":
     out = ROOT / "cache"
     out.mkdir(exist_ok=True)
+    sys.path.insert(0, str(ROOT))
+    from skeptic import config
     for f in (export_lsu, export_forge):
+        if f is export_lsu and not config.lsu_available():
+            print("LSU files not found (LSU-only data): skipping the LSU export")
+            continue
         d = f()
         (out / f"tnd_{d['well']}.pkl").write_bytes(pickle.dumps(d))
         print(d["well"], len(d["ev"]), "events;", d["P"]["L"].shape, "element arrays;",

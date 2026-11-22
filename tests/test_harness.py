@@ -113,6 +113,7 @@ def test_ledger_evidence_ids_must_exist(ws):
     assert "not tool calls made in this session" in tr["calls"][1]["text"]
 
 
+@pytest.mark.skipif(not (config.CACHE / "tnd_forge.pkl").exists(), reason="run scripts/export_tnd.py")
 def test_identifiability_gate(ws):
     """A friction factor is accepted only after friction_identifiability said 'identifiable'."""
     fr = lambda ev: submit(quantity="open-hole friction factor mu_open", value=0.35, unit="", explanation="mu is 0.35", evidence=ev)

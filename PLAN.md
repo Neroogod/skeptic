@@ -176,7 +176,7 @@ The author's PETE 7103 pipeline gained a physics-based error control (P8) and a 
 - **Prompt:** two clauses in the Skeptic method point to the two outputs. ReAct gets the tool too.
 
 Verification (no LLM runs):
-- 56 public and 7 private tests pass.
+- 50 public and 7 private tests pass (57 in total), including a fresh-clone install with a FORGE-only export.
 - All 3 "answer" windows of the test set's identify slice pass the check, and all 4 "abstain" windows
   get a concrete reason: shallow (bit below about 6,853 ft needed), or readings no friction explains
   (27 Dec logging trip lighter than the frictionless string, as PETE P8 found; 22 Dec trip out needing
@@ -185,3 +185,13 @@ Verification (no LLM runs):
 
 **Not evaluated:** the test-set results in RESULTS.md are for commit `2a2e1e6`. As pre-registered, the
 frozen test set cannot measure these changes; that needs a new held-out set.
+
+### Deliverables check (2026-11-22)
+
+- Code: fresh clone installs (`pip install -e ".[dev]"`; packaging fixed so `bench/` is not taken for a
+  package) and passes its tests; `export_tnd.py` skips LSU when the private files are absent.
+- Results: the held-out runs are committed (`results/test_set`, FORGE only) and `skeptic.bench.report`
+  rebuilds the RESULTS.md tables from them exactly.
+- Demo: replay works without key or network from `results/`; two live demo traces (22 Nov, $0.018, not
+  results) are in `results/demo`.
+- Slides: `slides/Skeptic_CSC7700_Oghale.pptx` (and `.pdf`), every number computed from `results/`.

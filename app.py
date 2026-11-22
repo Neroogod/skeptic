@@ -2,9 +2,11 @@
 
 Left: pick a well, write a question (or load a benchmark task), optionally sabotage the
 data. Right: the agent's tool calls stream in; then the ledger, the skeptic review and the
-final answer. Without an API key the page can replay saved traces from runs/.
+final answer. Without an API key (or network) the page replays saved traces: local runs in
+runs/ and the committed FORGE runs in results/ (test set and two demo traces).
 Demo on FORGE only (public data); LSU appears only when the private files are present.
 """
+import gzip
 import json
 import os
 
@@ -84,15 +86,28 @@ def show_trace(tr):
         st.json(tr["skeptic_reviews"])
 
 
+def saved_runs():
+    """Trace files: local runs (runs/, git-ignored) first, then the committed FORGE runs (results/)."""
+    return sorted(config.RUNS.glob("*/traces.jsonl"), reverse=True) + sorted((config.ROOT / "results").glob("**/traces.jsonl.gz"))
+
+
+def read_traces(f):
+    with (gzip.open(f, "rt") if f.suffix == ".gz" else open(f)) as fh:
+        return [json.loads(line) for line in fh]
+
+
+def mark(row):
+    return {True: "OK", False: "X"}.get(row.get("correct"), "-")      # '-' = demo trace, not scored
+
+
 left, right = st.columns([1, 1])
 if mode == "Replay trace":
-    files = sorted(config.RUNS.glob("*/traces.jsonl"), reverse=True)
+    files = saved_runs()
     if files:
-        f = st.selectbox("Run", files, format_func=lambda p: p.parent.name)
-        recs = [json.loads(l) for l in open(f)]
-        recs = [r for r in recs if r["trace"].get("calls") and r["trace"].get("well", well) == well]
+        f = st.selectbox("Run", files, format_func=lambda p: str(p.parent.relative_to(config.ROOT)))
+        recs = [r for r in read_traces(f) if r["trace"].get("calls") and r["trace"].get("well", well) == well]
         if recs:
-            r = st.selectbox("Trace", recs, format_func=lambda r: f"{r['row']['config']} {r['row']['task']} {'OK' if r['row']['correct'] else 'X'}")
+            r = st.selectbox("Trace", recs, format_func=lambda r: f"{r['row']['config']} {r['row']['task']} {mark(r['row'])}")
             with left:
                 st.subheader("Tool calls")
                 for c in r["trace"]["calls"]:

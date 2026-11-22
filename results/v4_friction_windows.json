@@ -1,0 +1,95 @@
+[
+ {
+  "start": "2020-12-07 08:00",
+  "end": "2020-12-07 11:00",
+  "key": "answer",
+  "why": "deep trip out, one informative trip",
+  "physics_check": "consistent with friction",
+  "readings_outside": 0,
+  "by_reason": {},
+  "identifiability": "identifiable",
+  "estimate": 0.4,
+  "next_measurement": null
+ },
+ {
+  "start": "2020-12-08 00:00",
+  "end": "2020-12-09 00:00",
+  "key": "answer",
+  "why": "deep trip out and trip in agree",
+  "physics_check": "consistent with friction",
+  "readings_outside": 0,
+  "by_reason": {},
+  "identifiability": "identifiable",
+  "estimate": 0.374,
+  "next_measurement": null
+ },
+ {
+  "start": "2020-12-12 00:00",
+  "end": "2020-12-14 00:00",
+  "key": "answer",
+  "why": "deep trip out to the shoe",
+  "physics_check": "consistent with friction",
+  "readings_outside": 0,
+  "by_reason": {},
+  "identifiability": "identifiable",
+  "estimate": 0.317,
+  "next_measurement": null
+ },
+ {
+  "start": "2020-11-24 00:00",
+  "end": "2020-11-27 00:00",
+  "key": "abstain",
+  "why": "shallow trips: too little open hole below the shoe",
+  "physics_check": "readings no friction factor explains",
+  "readings_outside": 2,
+  "by_reason": {
+   "beyond the largest friction": 2
+  },
+  "identifiability": "not identifiable",
+  "estimate": null,
+  "next_measurement": "a pick-up/slack-off series with the bit below about 6853 ft MD (the shallowest trip in this well whose hook loads move at least 20 klb per unit mu) would make mu_open measurable"
+ },
+ {
+  "start": "2020-11-27 00:00",
+  "end": "2020-11-30 00:00",
+  "key": "abstain",
+  "why": "trips disagree; one trip implies mu 0.77 (tight hole?)",
+  "physics_check": "readings no friction factor explains",
+  "readings_outside": 2,
+  "by_reason": {
+   "slack-off above zero-friction load": 2
+  },
+  "identifiability": "not identifiable",
+  "estimate": 0.634,
+  "next_measurement": "more trips like these will not settle it: run check_hookload_physics on this window. Readings that no friction factor explains point to a string, fill-state or sensor record problem, not friction"
+ },
+ {
+  "start": "2020-12-22 00:00",
+  "end": "2020-12-24 00:00",
+  "key": "abstain",
+  "why": "trips disagree (0.15 to 0.53) around BHA changes",
+  "physics_check": "readings no friction factor explains",
+  "readings_outside": 29,
+  "by_reason": {
+   "beyond the largest friction": 29
+  },
+  "identifiability": "not identifiable",
+  "estimate": 0.272,
+  "next_measurement": "more trips like these will not settle it: run check_hookload_physics on this window. Readings that no friction factor explains point to a string, fill-state or sensor record problem, not friction"
+ },
+ {
+  "start": "2020-12-26 00:00",
+  "end": "2020-12-29 00:00",
+  "key": "abstain",
+  "why": "logging trips: negative mu, the model does not fit",
+  "physics_check": "readings no friction factor explains",
+  "readings_outside": 7,
+  "by_reason": {
+   "pick-up below zero-friction load": 5,
+   "beyond the largest friction": 2
+  },
+  "identifiability": "not identifiable",
+  "estimate": -0.147,
+  "next_measurement": "more trips like these will not settle it: run check_hookload_physics on this window. Readings that no friction factor explains point to a string, fill-state or sensor record problem, not friction"
+ }
+]

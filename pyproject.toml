@@ -1,9 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "skeptic"
 version = "0.1.0"
 description = "A falsification-first agent for drilling data"
 requires-python = ">=3.11"
-dependencies = ["numpy", "pandas", "pyarrow", "openpyxl", "pymupdf", "openai", "streamlit", "matplotlib"]
+dependencies = ["numpy", "pandas", "pyarrow", "openpyxl", "pymupdf", "openai", "streamlit", "matplotlib", "scipy"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["skeptic*"]          # bench/ holds task JSON, not code
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

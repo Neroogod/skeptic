@@ -1,6 +1,7 @@
 """Merge benchmark runs into result tables (markdown) for the report and slides.
 
   .venv/bin/python -m skeptic.bench.report runs/20261107-1830 runs/20261107-1905
+  .venv/bin/python -m skeptic.bench.report results/test_set/llm results/test_set/fixed   # committed test runs
 
 If a (config, task, seed) appears in several runs, the latest run wins. The held-out test
 set (task ids test-*) is the headline; the development set (FORGE + LSU tasks used while
@@ -8,6 +9,7 @@ building the agent) is reported apart. Paired comparisons average each task over
 then bootstrap over tasks (95% CI) and use a sign-flip permutation test (p).
 Only aggregates are printed, so the output may mention LSU slices without exposing LSU values.
 """
+import gzip
 import json
 import sys
 from pathlib import Path
@@ -30,8 +32,10 @@ def load_rows(dirs, rescore=True):
     for d in sorted(dirs):
         f = Path(d) / "traces.jsonl"
         if not f.exists():
+            f = Path(d) / "traces.jsonl.gz"           # committed runs are gzipped
+        if not f.exists():
             continue
-        for line in open(f):
+        for line in (gzip.open(f, "rt") if f.suffix == ".gz" else open(f)):
             rec = json.loads(line)
             r = rec["row"]
             if r["task"] in keys and "answer" in rec["trace"]:

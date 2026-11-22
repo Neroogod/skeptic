@@ -18,20 +18,27 @@ CSC 7700 individual project (LSU, Fall 2026). The physics (soft-string torque an
 | `skeptic/bench/` | Fault injector, benchmark builder with oracle validation, deterministic scorer, fixed-pipeline baseline, runner |
 | `app.py` | Streamlit demo, with live runs, a sabotage menu and trace replay |
 | `scripts/export_tnd.py` | One-off export of torque-and-drag inputs from the PETE pipeline |
-| `tests/` | 56 tests (evidence, physics, harness, benchmark, UI) |
+| `results/` | The held-out test-set runs (`test_set/`, FORGE only, gzipped traces), two live demo traces (`demo/`), and the physics-check outcomes on the friction windows |
+| `slides/` | The final deck (`Skeptic_CSC7700_Oghale.pptx` / `.pdf`), built by `build_figures.py` and `build_slides.py` from `results/` |
+| `tests/` | 50 tests (evidence, physics, harness, benchmark, UI); 7 more LSU tests stay local in `tests/private/` |
 
 ## Setup
 
 ```bash
-uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e . scipy pytest
+uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e ".[dev]"
 cp .env.example .env              # add OPENROUTER_API_KEY; set a spend limit on openrouter.ai
 .venv/bin/python scripts/export_tnd.py          # needs ../Drilling_Project/pete_td (once)
 .venv/bin/python -m skeptic.bench.build         # builds the benchmark
-.venv/bin/python -m pytest -q                   # no API key needed
+.venv/bin/python -m pytest -q                   # no API key needed; T&D tests skip until export_tnd.py has run
 .venv/bin/python -m skeptic.bench.run --configs fixed               # baseline, no key
 .venv/bin/python -m skeptic.bench.run --configs skeptic --tasks forge-stuck-1,forge-friction-answer
 .venv/bin/streamlit run app.py
+.venv/bin/python -m skeptic.bench.report results/test_set/llm results/test_set/fixed   # test-set tables, no API key
+.venv/bin/python slides/build_figures.py && .venv/bin/python slides/build_slides.py   # rebuild the deck
 ```
+
+The demo's **Replay trace** mode needs no key or network: it replays local runs and the committed traces in
+`results/` (the 378 test-set runs and the two demo traces).
 
 ## Configurations compared
 
